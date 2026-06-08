@@ -1,0 +1,84 @@
+services:
+  lui:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    container_name: 3lui_app
+    # hostname: yourhostname <- optional
+    # The bundled Fail2ban (LUI_ENABLE_FAIL2BAN below) enforces the IP limit
+    # with iptables, which needs NET_ADMIN. Without these caps a ban is logged
+    # and shown in fail2ban status but never actually applied. NET_RAW covers
+    # ip6tables. If you disable Fail2ban, you can drop cap_add.
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - $PWD/db/:/etc/l-ui/
+      - $PWD/cert/:/root/cert/
+    environment:
+      XRAY_VMESS_AEAD_FORCED: "false"
+      LUI_ENABLE_FAIL2BAN: "true"
+      # To use PostgreSQL instead of the default SQLite, run:
+      #   docker compose --profile postgres up -d
+      # and uncomment the two lines below.
+      # LUI_DB_TYPE: "postgres"
+      # LUI_DB_DSN: "postgres://lui:${POSTGRES_PASSWORD:-lui}@postgres:5432/lui?sslmode=disable"
+    tty: true
+    ports:
+      - "2053:2053"
+    restart: unless-stopped
+    networks:
+      - l-ui-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2053/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: 3lui_postgres
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: lui
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lui}
+      POSTGRES_DB: lui
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - l-ui-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  l-ui-net:
+    driver: bridge
+
+volumes:
+  postgres_data:

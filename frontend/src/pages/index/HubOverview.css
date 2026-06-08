@@ -1,0 +1,90 @@
+.hub-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.overview-summary-card,
+.overview-note-card,
+.overview-node-section,
+.overview-metric-card,
+.overview-node-card {
+  border-radius: 14px;
+}
+
+.overview-summary-card .ant-card-body,
+.overview-note-card .ant-card-body,
+.overview-node-section .ant-card-body {
+  padding: 14px;
+}
+
+.overview-trend-grid {
+  align-items: stretch;
+}
+
+.overview-metric-card .ant-card-body {
+  padding-top: 10px;
+}
+
+.overview-metric-head {
+  margin-bottom: 10px;
+}
+
+.overview-node-card {
+  height: 100%;
+}
+
+.overview-node-card.is-stale {
+  border-color: rgba(250, 173, 20, 0.35);
+}
+
+.overview-node-subtitle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  color: var(--ant-color-text-tertiary);
+  font-size: 12px;
+}
+
+.overview-node-stats {
+  margin-bottom: 10px;
+}
+
+.overview-node-detail {
+  color: var(--ant-color-text-tertiary);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.overview-node-footer {
+  border-top: 1px solid var(--ant-color-border-secondary);
+  padding-top: 10px;
+  color: var(--ant-color-text-secondary);
+  font-size: 12px;
+}
+
+.overview-node-error {
+  color: var(--ant-color-warning-text);
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.overview-empty-state {
+  border: 1px dashed var(--ant-color-border-secondary);
+  border-radius: 12px;
+  color: var(--ant-color-text-tertiary);
+  padding: 20px;
+  text-align: center;
+}
+
+.overview-note-card {
+  background: linear-gradient(180deg, rgba(82, 196, 26, 0.06), transparent 100%);
+}
+
+.overview-node-card .ant-card-extra,
+.overview-summary-card .ant-card-extra {
+  margin-left: 0;
+}

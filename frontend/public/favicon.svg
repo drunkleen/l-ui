@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <style>
+      @media (prefers-color-scheme: light) {
+        .dark { display: none; }
+      }
+      @media (prefers-color-scheme: dark) {
+        .light { display: none; }
+      }
+      @media (prefers-color-scheme: no-preference) {
+        .light { display: none; }
+      }
+    </style>
+  </defs>
+
+  <!-- Dark theme -->
+  <g class="dark">
+    <path d="M32 4 L56 18 L56 46 L32 60 L8 46 L8 18 Z" fill="#181825" stroke="#89b4fa" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="21" y="19" width="7" height="28" rx="3.5" fill="#89b4fa"/>
+    <rect x="21" y="41" width="20" height="7" rx="3.5" fill="#89b4fa"/>
+    <circle cx="46" cy="23" r="4.5" fill="#b4befe"/>
+    <circle cx="46" cy="47" r="3.5" fill="#a6e3a1"/>
+  </g>
+
+  <!-- Light theme -->
+  <g class="light">
+    <path d="M32 4 L56 18 L56 46 L32 60 L8 46 L8 18 Z" fill="#e6e9ef" stroke="#1e66f5" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="21" y="19" width="7" height="28" rx="3.5" fill="#1e66f5"/>
+    <rect x="21" y="41" width="20" height="7" rx="3.5" fill="#1e66f5"/>
+    <circle cx="46" cy="23" r="4.5" fill="#7287fd"/>
+    <circle cx="46" cy="47" r="3.5" fill="#40a02b"/>
+  </g>
+</svg>

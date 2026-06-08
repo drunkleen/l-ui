@@ -1,0 +1,118 @@
+.test-row .hint {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-top: 4px;
+}
+
+.ant-form .hint {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-top: 4px;
+}
+
+.test-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.test-result {
+  width: 100%;
+}
+
+/* Bootstrap progress timeline */
+.bootstrap-timeline {
+  margin-bottom: 16px;
+}
+
+.bootstrap-steps {
+  position: relative;
+  padding-left: 4px;
+}
+
+.bootstrap-step {
+  display: flex;
+  gap: 12px;
+  position: relative;
+  padding-bottom: 8px;
+  min-height: 40px;
+}
+
+.bootstrap-step:last-child {
+  padding-bottom: 0;
+}
+
+.bootstrap-step.is-pending {
+  opacity: 0.45;
+}
+
+.bootstrap-step-icon {
+  flex-shrink: 0;
+  width: 20px;
+  display: flex;
+  justify-content: center;
+  padding-top: 2px;
+  z-index: 1;
+}
+
+.bootstrap-step-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.bootstrap-step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 24px;
+}
+
+.bootstrap-step-name {
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.bootstrap-step-badge {
+  font-size: 11px;
+  color: #89b4fa;
+  background: color-mix(in srgb, #89b4fa 14%, transparent);
+  border-radius: 4px;
+  padding: 0 6px;
+  line-height: 18px;
+}
+
+.bootstrap-step-output {
+  font-size: 12px;
+  background: #11111b;
+  color: #cdd6f4;
+  border-radius: 4px;
+  padding: 8px;
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.bootstrap-connector {
+  position: absolute;
+  left: 13px;
+  top: 28px;
+  bottom: 8px;
+  width: 1px;
+  background: #45475a;
+}
+
+.bootstrap-step:last-child .bootstrap-connector {
+  display: none;
+}
+
+/* Error output inside timeline panels must always have dark background */
+.bootstrap-step-body .ant-collapse-header {
+  color: #e0e0e0 !important;
+  padding-left: 0 !important;
+}
+.bootstrap-step-body .ant-collapse-content-box {
+  padding: 0 !important;
+}

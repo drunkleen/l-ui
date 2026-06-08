@@ -1,0 +1,67 @@
+name: "Purge Workflow Runs"
+on:
+  workflow_dispatch:
+    inputs:
+      clean_failed:
+        description: "Failed workflow runs"
+        type: boolean
+        default: true
+      clean_cancelled:
+        description: "Cancelled workflow runs"
+        type: boolean
+        default: true
+      clean_success:
+        description: "Successful workflow runs"
+        type: boolean
+        default: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete workflow runs and their caches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CONCLUSIONS=""
+          [ "${{ inputs.clean_failed }}" = "true" ] && CONCLUSIONS="$CONCLUSIONS failure"
+          [ "${{ inputs.clean_cancelled }}" = "true" ] && CONCLUSIONS="$CONCLUSIONS cancelled"
+          [ "${{ inputs.clean_success }}" = "true" ] && CONCLUSIONS="$CONCLUSIONS success"
+          [ -z "$CONCLUSIONS" ] && { echo "Nothing selected."; exit 0; }
+
+          REPO="${{ github.repository }}"
+
+          # Delete workflow runs for each selected conclusion
+          for conc in $CONCLUSIONS; do
+            echo "--- Fetching $conc runs ---"
+            gh api "repos/$REPO/actions/runs?per_page=200&conclusion=$conc" --jq '.workflow_runs[] | "\(.id) \(.head_branch)"' 2>&1 | while read -r rid branch; do
+              [ -z "$rid" ] && continue
+              echo "Deleting run $rid ($branch)"
+              gh api -X DELETE "repos/$REPO/actions/runs/$rid" || true
+              [ -n "$branch" ] && echo "$branch" >> /tmp/branches.txt
+            done
+          done
+
+          # Delete caches for the same branches
+          if [ -s /tmp/branches.txt ]; then
+            BRANCHES=$(sort -u /tmp/branches.txt)
+            echo "--- Cleaning caches for branches ---"
+            echo "$BRANCHES"
+            gh api "repos/$REPO/actions/caches?per_page=200" --jq '.actions_caches[] | "\(.id) \(.ref)"' 2>&1 | while read -r cid ref; do
+              [ -z "$cid" ] && continue
+              cref="${ref#refs/heads/}"
+              for b in $BRANCHES; do
+                if [ "$cref" = "$b" ]; then
+                  echo "Deleting cache $cid ($cref)"
+                  gh api -X DELETE "repos/$REPO/actions/caches/$cid" || true
+                  break
+                fi
+              done
+            done
+          else
+            echo "No branches to clean caches for."
+          fi
+
+          echo "Done."

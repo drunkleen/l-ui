@@ -1,0 +1,14 @@
+.git/
+tmp/
+bin/
+docs/
+media/
+*.md
+.github/
+frontend/node_modules/
+web/dist/
+build/
+db/
+cert/
+pgdata/
+*.db

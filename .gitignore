@@ -1,0 +1,49 @@
+# Ignore editor and IDE settings
+.idea/
+.vscode/
+.claude/
+.cache/
+.sync*
+.omo
+.opencode
+
+# Ignore log files
+*.log
+
+# Ignore temporary files
+tmp/
+*.tar.gz
+
+# Ignore build and distribution directories
+backup/
+bin/
+dist/
+!hub/web/dist/
+hub/web/dist/*
+!hub/web/dist/.gitkeep
+release/
+node_modules/
+
+# Ignore compiled binaries
+main
+
+# Ignore script and executable files
+/release.sh
+/l-ui
+
+# Ignore OS specific files
+.DS_Store
+Thumbs.db
+
+# Ignore Go build files
+*.exe
+l-ui.db
+l-ui.db-shm
+l-ui.db-wal
+
+# Ignore Docker specific files
+docker-compose.override.yml
+
+# Ignore .env (Environment Variables) file
+PLAN.md
+.env

@@ -1,0 +1,300 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend bundle
+        run: |
+          npm ci
+          npm run build
+        working-directory: frontend
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-dist
+          path: hub/web/dist/
+          retention-days: 1
+
+  build:
+    needs: build-frontend
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        platform:
+          - amd64
+          - arm64
+          - armv7
+          - armv6
+          - 386
+          - armv5
+          - s390x
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: frontend-dist
+          path: hub/web/dist/
+      - name: Sync release version
+        run: printf '%s\n' "${GITHUB_REF_NAME#v}" > internal/config/version
+      - name: Cache Bootlin musl toolchains
+        uses: actions/cache@v5
+        with:
+          path: /tmp/bootlin-toolchains
+          key: bootlin-musl-${{ matrix.platform }}-${{ hashFiles('go.mod') }}
+          restore-keys: bootlin-musl-${{ matrix.platform }}-
+      - name: Build + package
+        run: |
+          export CGO_ENABLED=1 GOOS=linux GOARCH=${{ matrix.platform }}
+          case "${{ matrix.platform }}" in
+            amd64) BOOTLIN_ARCH="x86-64" ;;
+            arm64) BOOTLIN_ARCH="aarch64" ;;
+            armv7) BOOTLIN_ARCH="armv7-eabihf"; export GOARCH=arm GOARM=7 ;;
+            armv6) BOOTLIN_ARCH="armv6-eabihf"; export GOARCH=arm GOARM=6 ;;
+            armv5) BOOTLIN_ARCH="armv5-eabi";  export GOARCH=arm GOARM=5 ;;
+            386)   BOOTLIN_ARCH="x86-i686" ;;
+            s390x) BOOTLIN_ARCH="s390x-z13" ;;
+          esac
+          CACHE_DIR="/tmp/bootlin-toolchains/${{ matrix.platform }}"
+          mkdir -p "$CACHE_DIR"
+          TOOLCHAIN_DIR=$(find "$CACHE_DIR" -maxdepth 1 -type d -name "${BOOTLIN_ARCH}--musl--stable-*" | head -n1)
+          if [ -z "$TOOLCHAIN_DIR" ]; then
+            TARBALL_BASE="https://toolchains.bootlin.com/downloads/releases/toolchains/$BOOTLIN_ARCH/tarballs/"
+            TARBALL_URL=$(curl -fsSL "$TARBALL_BASE" | grep -oE "${BOOTLIN_ARCH}--musl--stable-[^\"]+\\.tar\\.xz" | sort -r | head -n1)
+            [ -z "$TARBALL_URL" ] && { echo "Bootlin toolchain not found for $BOOTLIN_ARCH"; exit 1; }
+            (cd "$CACHE_DIR" && curl -fL -sS -o "$(basename "$TARBALL_URL")" "$TARBALL_BASE/$TARBALL_URL" && tar -xf "$(basename "$TARBALL_URL")")
+            TOOLCHAIN_DIR=$(find "$CACHE_DIR" -maxdepth 1 -type d -name "${BOOTLIN_ARCH}--musl--stable-*" | head -n1)
+          fi
+          export PATH="$(realpath "$TOOLCHAIN_DIR")/bin:$PATH"
+          export CC=$(realpath "$(find "$TOOLCHAIN_DIR/bin" -name '*-gcc.br_real' -type f -executable | head -n1)")
+          [ -z "$CC" ] && { echo "No gcc.br_real found"; exit 1; }
+          go build -ldflags "-w -s -linkmode external -extldflags '-static'" -o lui-hub-release -v ./hub
+          go build -ldflags "-w -s -linkmode external -extldflags '-static'" -o lui-agent-release -v ./agent
+          # Download Xray + geo data
+          TMP_XRAY="$(mktemp -d)"
+          XRAY_VERSION="${XRAY_VERSION:-v26.6.1}"
+          Xray_URL="https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/"
+          case "${{ matrix.platform }}" in
+            amd64) ZIP="Xray-linux-64.zip" ;;
+            arm64) ZIP="Xray-linux-arm64-v8a.zip" ;;
+            armv7) ZIP="Xray-linux-arm32-v7a.zip" ;;
+            armv6) ZIP="Xray-linux-arm32-v6.zip" ;;
+            armv5) ZIP="Xray-linux-arm32-v5.zip" ;;
+            386)   ZIP="Xray-linux-32.zip" ;;
+            s390x) ZIP="Xray-linux-s390x.zip" ;;
+          esac
+          wget -q -P "$TMP_XRAY" "$Xray_URL$ZIP"
+          (cd "$TMP_XRAY" && unzip -o "$ZIP" && rm -f "$ZIP")
+          XRAY_SRC="$(find "$TMP_XRAY" -maxdepth 2 -type f -name 'xray' | head -1)"
+          [ -z "$XRAY_SRC" ] && { echo "Xray binary not found"; exit 1; }
+          XRAY_NAME="xray-linux-${{ matrix.platform }}"
+          cp "$XRAY_SRC" "$XRAY_NAME"
+          rm -f geoip.dat geosite.dat
+          wget -q https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
+          wget -q https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
+          wget -q -O geoip_IR.dat https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geoip.dat
+          wget -q -O geosite_IR.dat https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat
+          wget -q -O geoip_RU.dat https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat
+          wget -q -O geosite_RU.dat https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat
+          # Agent tarball (extracts as l-ui/ on the node).
+          mkdir -p _agent/l-ui/bin
+          cp lui-agent-release _agent/l-ui/l-ui
+          cp l-ui.service* _agent/l-ui/
+          cp "$XRAY_NAME" *.dat _agent/l-ui/bin/
+          cd _agent && tar -zcf "../l-ui-agent-linux-${{ matrix.platform }}.tar.gz" l-ui && cd ..
+          # Hub tarball (extracts as l-ui/ on the server).
+          mkdir -p _hub/l-ui/bin
+          cp lui-hub-release _hub/l-ui/l-ui-hub
+          ln -s l-ui-hub _hub/l-ui/l-ui
+          cp l-ui.service* _hub/l-ui/
+          cp l-ui.sh _hub/l-ui/
+          cp "$XRAY_NAME" *.dat _hub/l-ui/bin/
+          cd _hub && tar -zcf "../l-ui-hub-linux-${{ matrix.platform }}.tar.gz" l-ui && cd ..
+      - name: Verify hub tarball
+        run: |
+          for f in l-ui/l-ui-hub l-ui/l-ui l-ui/l-ui.service l-ui/bin/xray-linux-${{ matrix.platform }}; do
+            tar -tzf l-ui-hub-linux-${{ matrix.platform }}.tar.gz | grep -Fxq "$f" || { echo "missing $f"; exit 1; }
+          done
+      - name: Verify agent tarball
+        run: |
+          for f in l-ui/l-ui l-ui/l-ui.service l-ui/bin/xray-linux-${{ matrix.platform }}; do
+            tar -tzf l-ui-agent-linux-${{ matrix.platform }}.tar.gz | grep -Fxq "$f" || { echo "missing $f"; exit 1; }
+          done
+      - name: Upload hub artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: l-ui-hub-linux-${{ matrix.platform }}
+          path: ./l-ui-hub-linux-${{ matrix.platform }}.tar.gz
+      - name: Upload agent artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: l-ui-agent-linux-${{ matrix.platform }}
+          path: ./l-ui-agent-linux-${{ matrix.platform }}.tar.gz
+
+  smoke-test:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform:
+          - amd64
+    steps:
+      - name: Download hub artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: l-ui-hub-linux-${{ matrix.platform }}
+          path: .
+      - name: Extract and verify hub binary
+        run: |
+          tar -xzf l-ui-hub-linux-${{ matrix.platform }}.tar.gz
+          chmod +x l-ui/l-ui-hub
+          ./l-ui/l-ui-hub -v
+
+  # docker:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: read
+  #     packages: write
+  #     attestations: write
+  #   steps:
+  #     - uses: actions/checkout@v6
+  #       with:
+  #         submodules: true
+  #     - name: Download all hub tarballs
+  #       uses: actions/download-artifact@v7
+  #       with:
+  #         pattern: l-ui-hub-linux-*
+  #         path: binaries/
+  #         merge-multiple: true
+  #     - name: Extract binaries into build context
+  #       run: |
+  #         for tar in binaries/l-ui-hub-linux-*.tar.gz; do
+  #           arch=$(basename "$tar" | sed 's/l-ui-hub-linux-//;s/\.tar\.gz//')
+  #           case "$arch" in
+  #             amd64) dst="l-ui-hub-amd64" ;;
+  #             arm64) dst="l-ui-hub-arm64v8" ;;
+  #             armv7) dst="l-ui-hub-armv7" ;;
+  #             armv6) dst="l-ui-hub-armv6" ;;
+  #             s390x) dst="l-ui-hub-s390x" ;;
+  #             armv5|386) echo "skipping $arch (not in Docker platforms)"; continue ;;
+  #             *) echo "unknown arch: $arch"; exit 1 ;;
+  #           esac
+  #           echo "extracting $arch -> $dst"
+  #           tmpd="$(mktemp -d)"
+  #           tar -xzf "$tar" -C "$tmpd"
+  #           cp "$tmpd/l-ui/l-ui-hub" "$dst"
+  #           rm -rf "$tmpd"
+  #           ls -lh "$dst"
+  #         done
+  #     - name: Docker meta
+  #       id: meta
+  #       uses: docker/metadata-action@v6
+  #       with:
+  #         images: |
+  #           ghcr.io/drunkleen/l-ui
+  #         tags: |
+  #           type=ref,event=branch
+  #           type=ref,event=tag
+  #           type=semver,pattern={{version}}
+  #     - name: Set up QEMU
+  #       uses: docker/setup-qemu-action@v4
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v4
+  #     - name: Login to Docker Hub
+  #       uses: docker/login-action@v4
+  #       with:
+  #         username: ${{ secrets.DOCKER_HUB_USERNAME }}
+  #         password: ${{ secrets.DOCKER_HUB_TOKEN }}
+  #     - name: Login to GHCR
+  #       uses: docker/login-action@v4
+  #       with:
+  #         registry: ghcr.io
+  #         username: ${{ github.actor }}
+  #         password: ${{ secrets.GITHUB_TOKEN }}
+  #     - name: Build and push Docker image
+  #       uses: docker/build-push-action@v7
+  #       with:
+  #         context: .
+  #         push: true
+  #         platforms: linux/amd64,linux/arm64/v8,linux/arm/v7,linux/arm/v6,linux/s390x
+  #         tags: ${{ steps.meta.outputs.tags }}
+  #         labels: ${{ steps.meta.outputs.labels }}
+  #         cache-from: type=gha
+  #         cache-to: type=gha,mode=max
+  #         provenance: true
+  #     - name: Generate SBOM
+  #       uses: anchore/sbom-action@v0
+  #       with:
+  #         image: ghcr.io/drunkleen/l-ui:latest
+  #         format: spdx-json
+  #         output-file: sbom.spdx.json
+  #     - name: Upload SBOM artifact
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: sbom
+  #         path: sbom.spdx.json
+  #         retention-days: 90
+  #     - name: Run Trivy vulnerability scanner
+  #       uses: aquasecurity/trivy-action@master
+  #       with:
+  #         image-ref: ghcr.io/drunkleen/l-ui:latest
+  #         format: sarif
+  #         output: trivy-results.sarif
+  #         severity: CRITICAL,HIGH
+  #         exit-code: "1"
+  #     - name: Upload Trivy results to GitHub Security tab
+  #       uses: github/codeql-action/upload-sarif@v3
+  #       with:
+  #         sarif_file: trivy-results.sarif
+  #     - name: Smoke test container
+  #       run: |
+  #         docker run -d --name lui-smoke-test -p 2053:2053 ghcr.io/drunkleen/l-ui:latest
+  #         for i in $(seq 1 30); do
+  #           if docker inspect --format='{{.State.Health.Status}}' lui-smoke-test 2>/dev/null | grep -q "healthy"; then break; fi
+  #           sleep 2
+  #         done
+  #         curl -f --max-time 10 http://localhost:2053/healthz || exit 1
+  #         docker stop lui-smoke-test && docker rm lui-smoke-test
+
+  release:
+    needs: [smoke-test]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: l-ui-*-linux-*
+          path: artifacts/
+          merge-multiple: true
+      - name: Upload to GH Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/l-ui-hub-linux-*.tar.gz
+            artifacts/l-ui-agent-linux-*.tar.gz
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

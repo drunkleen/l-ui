@@ -1,0 +1,168 @@
+.toolbar {
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ── Grid layout ───────────────────────────────────────────── */
+
+.node-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 1200px) {
+  .node-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ── Card ──────────────────────────────────────────────────── */
+
+.node-card {
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 10px;
+  background: var(--ant-color-fill-quaternary);
+  overflow: hidden;
+}
+
+.node-card.is-expanded {
+  border-color: var(--ant-color-primary);
+}
+
+/* ── Header row ────────────────────────────────────────────── */
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--ant-color-fill-tertiary);
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+}
+
+.card-expand {
+  font-size: 12px;
+  opacity: 0.6;
+  transition: transform 150ms ease;
+  flex-shrink: 0;
+}
+
+.card-expand.is-expanded {
+  transform: rotate(90deg);
+}
+
+.node-name {
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-group-tag {
+  margin: 0;
+  font-size: 11px;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.row-action-trigger {
+  font-size: 20px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.row-action-trigger:hover {
+  opacity: 1;
+}
+
+/* ── Card body — metrics ───────────────────────────────────── */
+
+.card-body {
+  padding: 10px 12px;
+}
+
+.card-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.metric-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.metric-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.55;
+  white-space: nowrap;
+}
+
+.metric-value {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metric-address {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: var(--ant-color-primary);
+}
+
+/* ── Expanded history ──────────────────────────────────────── */
+
+.card-history {
+  border-top: 1px solid var(--ant-color-border-secondary);
+  padding: 8px 12px;
+}
+
+/* ── Empty state ───────────────────────────────────────────── */
+
+.card-empty {
+  text-align: center;
+  color: var(--ant-color-text-secondary);
+  padding: 24px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Status dot ────────────────────────────────────────────── */
+
+.online-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ant-color-success);
+  box-shadow: 0 0 4px var(--ant-color-success);
+  flex-shrink: 0;
+}

@@ -1,0 +1,25 @@
+[Unit]
+Description=L-UI Hub Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/l-ui/l-ui run
+ExecReload=/bin/kill -USR1 $MAINPID
+EnvironmentFile=-/etc/default/l-ui
+Restart=on-failure
+RestartSec=5s
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+RestrictSUIDSGID=true
+ReadWritePaths=/etc/l-ui /var/log/l-ui /etc/ufw
+RuntimeDirectory=l-ui
+StateDirectory=l-ui
+LogsDirectory=l-ui
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+#!/sbin/openrc-run
+supervisor=supervise-daemon
+command="/usr/local/l-ui/l-ui"
+command_args=""
+pidfile="/run/l-ui.pid"
+description="L-UI Hub Service"
+
+depend() {
+    need net
+}
+
+start_pre() {
+    checkpath --directory --owner root:root --mode 0755 /run /var/log/l-ui
+}
