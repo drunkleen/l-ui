@@ -8,6 +8,7 @@ import (
 )
 
 var cfgSvc = service.NewConfigService()
+var xraySvc = &service.XrayService{}
 
 func (s *ConfigController) GetConfig(c fiber.Ctx) error {
 	cfg, err := cfgSvc.GetConfig()
@@ -32,6 +33,12 @@ func (s *ConfigController) PushConfig(c fiber.Ctx) error {
 	if err := cfgSvc.PushConfig(req.HubNodeID, req.HubEndpoint, req.XrayConfig, req.ClientList); err != nil {
 		return abortJSONError(c, fiber.StatusInternalServerError, err.Error())
 	}
+	// Write config to disk and restart xray
+	if len(req.XrayConfig) > 0 {
+		if err := xraySvc.ApplyConfig(req.XrayConfig); err != nil {
+			return abortJSONError(c, fiber.StatusInternalServerError, "config stored but apply failed: "+err.Error())
+		}
+	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"success": true,
 		"obj": fiber.Map{
@@ -41,5 +48,17 @@ func (s *ConfigController) PushConfig(c fiber.Ctx) error {
 }
 
 func (s *ConfigController) ApplyConfig(c fiber.Ctx) error {
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true, "msg": "config applied"})
+	var req struct {
+		XrayConfig json.RawMessage `json:"xray_config"`
+	}
+	if err := c.Bind().JSON(&req); err != nil {
+		return abortJSONError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+	if len(req.XrayConfig) == 0 {
+		return abortJSONError(c, fiber.StatusBadRequest, "xray_config is required")
+	}
+	if err := xraySvc.ApplyConfig(req.XrayConfig); err != nil {
+		return abortJSONError(c, fiber.StatusInternalServerError, err.Error())
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true, "msg": "config applied and xray restarted"})
 }

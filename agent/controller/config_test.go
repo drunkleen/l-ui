@@ -81,6 +81,9 @@ func TestConfigController_GetConfig_WithConfig(t *testing.T) {
 
 func TestConfigController_PushConfig_ValidRequest(t *testing.T) {
 	setupConfigControllerTestDB(t)
+	oldRestart := service.RestartXrayFn
+	service.RestartXrayFn = func() error { return nil }
+	defer func() { service.RestartXrayFn = oldRestart }()
 
 	body := `{"hub_node_id": "node-2", "hub_endpoint": "https://hub2.example.com", "xray_config": {"port": 10086}, "client_list": [{"email": "a@b.com"}]}`
 	ctrl := &ConfigController{}
@@ -145,6 +148,35 @@ func TestConfigController_PushConfig_EmptyBody(t *testing.T) {
 }
 
 func TestConfigController_ApplyConfig(t *testing.T) {
+	oldRestart := service.RestartXrayFn
+	service.RestartXrayFn = func() error { return nil }
+	defer func() { service.RestartXrayFn = oldRestart }()
+
+	ctrl := &ConfigController{}
+
+	app := fiber.New()
+	app.Post("/api/v1/config/apply", ctrl.ApplyConfig)
+
+	body := `{"xray_config": {"inbounds": [{"port": 443}]}}`
+	resp, err := app.Test(testRequest("POST", "/api/v1/config/apply", body))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, resp.Body)
+	}
+	var result map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if result["success"] != true {
+		t.Fatalf("expected success true, got %v", result["success"])
+	}
+}
+
+func TestConfigController_ApplyConfig_EmptyBody(t *testing.T) {
 	ctrl := &ConfigController{}
 
 	app := fiber.New()
@@ -156,15 +188,8 @@ func TestConfigController_ApplyConfig(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
-	var result map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		t.Fatalf("unmarshal response: %v", err)
-	}
-	if result["success"] != true {
-		t.Fatalf("expected success true, got %v", result["success"])
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
 }
 
@@ -215,6 +240,9 @@ func TestConfigController_PushConfig_UpdatesVersion(t *testing.T) {
 
 func TestConfigController_PushConfig_AllFields(t *testing.T) {
 	setupConfigControllerTestDB(t)
+	oldRestart := service.RestartXrayFn
+	service.RestartXrayFn = func() error { return nil }
+	defer func() { service.RestartXrayFn = oldRestart }()
 
 	body := `{
 		"hub_node_id": "node-full",

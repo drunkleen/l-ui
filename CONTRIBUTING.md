@@ -13,7 +13,7 @@ You will need:
 
 ## Local Setup
 
-The recommended local workflow is the Makefile.
+The recommended local workflow:
 
 ```bash
 make dev
@@ -58,15 +58,46 @@ If you hit `cgo: C compiler "gcc" not found`, install a compiler and confirm `gc
 
 ## Frontend Workflow
 
-The frontend is a multi-page Vite app under `frontend/`.
+The frontend is a multi-entry Vite app under `frontend/`.
 
 - `npm run dev` starts the UI in HMR mode
-- `npm run build` generates `web/dist/`
+- `npm run build` generates `hub/web/dist/`
 - `npm run test` runs Vitest
 - `npm run lint` runs ESLint
 - `npm run typecheck` runs TypeScript
 
 See [`frontend/README.md`](./frontend/README.md) for the source layout and script details.
+
+## Backend Workflow
+
+The backend is a Go module at the repo root with three main entry points:
+
+- `hub/main.go` — the hub server
+- `agent/main.go` — the agent binary
+- `hub/cmd/` — cobra CLI commands
+
+Key packages:
+
+| Package | Purpose |
+|---------|---------|
+| `hub/web/service/` | Business logic (xray, node, inbound, config, firewall) |
+| `hub/web/controller/` | Fiber HTTP handlers |
+| `hub/web/runtime/` | Hub-to-agent HTTP client (HMAC-signed) |
+| `agent/service/` | Agent-side services (xray install, config apply, firewall) |
+| `agent/controller/` | Agent HTTP handlers |
+| `internal/` | Shared packages (config, auth, SSH, bundle, UFW, retry) |
+| `xray/` | Xray core primitives (config structs, process, gRPC API) |
+
+## Framework Conventions
+
+- Backend uses **Fiber v3** (`github.com/gofiber/fiber/v3`)
+- All handler functions return `fiber.Handler` as `func(c fiber.Ctx) error`
+- JSON responses use `c.Status(code).JSON(obj)`
+- Request body binding uses `c.Bind().Body(&dst)` or `c.Bind().JSON(&dst)`
+- Session management uses Fiber's session middleware
+- Frontend uses **React 19 + Ant Design 6**
+- Query state is managed with **TanStack React Query**
+- Validation uses **Zod** (frontend) and `go-playground/validator` (backend)
 
 ## Docs Workflow
 
@@ -93,5 +124,7 @@ Keep the top-level README, the docs in `docs/`, and the frontend README in sync 
 ## Runtime Paths
 
 - Local dev runtime data should stay under `./tmp/`
-- Production defaults are `/etc/l-ui` for the database and `/var/log/l-ui` for logs
+- Hub production defaults: `/etc/l-ui` for the database, `/var/log/l-ui` for logs
+- Agent production install: `/usr/local/l-ui-agent/`
+- Hub production install: `/usr/local/l-ui-hub/`
 - Do not commit runtime files, generated bundles, or local databases

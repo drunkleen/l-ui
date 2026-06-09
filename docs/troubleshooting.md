@@ -1,77 +1,89 @@
 # Troubleshooting
 
-## Local Dev Does Not Start
+## Local Dev Startup Issues
 
-- Check whether ports `2053` (backend) or `5173` (Vite) are already in use.
-- Stop any leftover local processes before retrying.
-- `make dev` prints backend compile progress and should wait for `/csrf-token` before starting Vite.
+**Backend compiles but server won't start** — Check port 2053 availability. Another process may be listening. Use `lsof -i :2053` or `ss -tlnp | grep 2053`.
 
-## Backend Compiles But Never Starts
+**"failed to create log folder" errors in tests** — The test runner tries to create `/var/log/l-ui/` which requires root. Tests that don't need logging should use `config.IsDebug()` guards. Run `sudo mkdir -p /var/log/l-ui && sudo chown $USER /var/log/l-ui` for your user.
 
-- Read the backend log output in the terminal.
-- Check whether the database or log directory is writable.
-- Verify that `LUI_DB_FOLDER` and `LUI_LOG_FOLDER` point to valid paths.
+**Database migration errors** — Delete `./tmp/l-ui.db` and `./tmp/l-ui-agent.db` and restart `make dev`.
 
-## Bootstrap Fails
+## Bootstrap Failures
 
-- Check SSH credentials and sudo access.
-- Verify systemd availability on the VPS.
-- Check the node API health endpoint after bootstrap.
-- Look at the bootstrap job details in the panel — each step shows success/failure and output.
-- If SSH dial fails, verify the port is open and the host key is accepted.
-- If bundle upload fails, check disk space on the VPS (`df -h`).
+**"missing l-ui-agent executable in bundle"** — The bootstrap downloaded an old-format release tarball (before the hub/agent split). The agent's extraction step auto-renames `l-ui/` → `l-ui-agent/` on new code. If you're running an old hub version, upgrade.
 
-## Probe / Heartbeat Fails
+**"Process exited with status 1" at verify-agent** — The agent service started but the hub can't reach its API. Common causes:
 
-- Verify the node agent is running (`systemctl status l-ui` on the node).
-- Check network connectivity between the hub and the agent (firewall rules, routing).
-- If the probe shows "HTTP 503" or "connection refused", the agent may be starting up — the hub retries automatically (3 attempts, 200ms–2s backoff).
-- If the probe shows "HTTP 400" or "HTTP 401", the API token or signature may be mismatched — try rotating the node's credentials.
+- UFW is blocking the agent port. Check `ufw status` on the node and add a rule for the agent port.
+- The agent is listening on a different port than expected. Check the env file at `/etc/default/l-ui-agent` for `LUI_WEB_PORT`.
+- The agent's systemd service has `EnvironmentFile=/etc/default/l-ui` (old path) instead of `/etc/default/l-ui-agent`. Regenerate the service file with the correct path.
 
-## Config Push Fails
+**SSH connection refused** — Verify the VPS IP, port, and credentials. Check that the SSH service is running on the remote host.
 
-- Verify the node is online and reachable.
-- Check the node's config version in the panel — if it's `0`, no config has been pushed yet.
-- The push includes both Xray config and client list; check both in the payload.
-- If the node has inbounds with TLS certificates that don't exist on the node, use "Get Web Cert Files" or "Set Cert from Panel" to update the inbound's certificate paths.
+**"sudo not found"** — The bootstrap requires sudo. Install sudo on the remote host or add `NOPASSWD` for the SSH user.
 
-## TLS / HTTPS Fails
+## Probe / Heartbeat Failures
 
-### Hub Web TLS
-- If the hub panel shows certificate errors, check that the cert files exist and paths are set via `l-ui cert`.
-- For Let's Encrypt IP certificates: validity is ~6 days; auto-renewal is handled by acme.sh.
+**Node shows offline** — The hub probes `GET /api/v1/status` every 5 seconds. If the agent is unreachable:
 
-### Agent TLS (hub↔node)
-- Generate a certificate from the hub panel (Nodes → Cert → Generate).
-- Verify the cert status endpoint (`GET /api/v1/certs/status`) on the node.
-- The `NodeCertRenewalJob` runs daily and renews certs expiring within 30 days.
-- If the certificate is rejected, try the "Fetch and Pin" action to update the pinned SHA-256.
+1. SSH into the node and check `systemctl status l-ui-agent`
+2. Check `journalctl -u l-ui-agent -n 50` for errors
+3. Verify the node's address/port/scheme in the hub panel
+4. Test the API manually: `curl -skH "Authorization: Bearer <token>" https://<node>:<port>/api/v1/status`
+5. Check UFW is not blocking the agent port
 
-## Node Is Offline
+**"unauthorized" probe responses** — The API token on the hub doesn't match the agent's token. Regenerate the token on both sides.
 
-- Heartbeats may be stale — wait for the next heartbeat cycle (every 5 seconds).
-- Verify the node agent process is running (`systemctl status l-ui`).
-- Use the reconcile action: it probes, restarts Xray, and reinstalls the bundle if needed.
-- If the node is permanently unreachable, re-bootstrap it.
+## Config Push Failures
+
+**Config push succeeds but xray doesn't restart** — The agent stores the config and attempts `systemctl restart xray`. If the xray service doesn't exist or has a wrong config path:
+
+1. SSH into the node and check `systemctl status xray` (exit code 23 = config file not found)
+2. Check the xray service file for the correct `-config` path: `grep ExecStart /etc/systemd/system/xray.service`
+3. Verify the config file exists: `ls -la /usr/local/l-ui-agent/bin/config.json`
+4. Run `systemctl restart xray` manually and check for errors
+
+**HTTP 400 on firewall rules** — The hub sends port as a string (`"port": "2020"`). If you're using a custom script, make sure the port value is a string, not a number.
+
+## TLS / HTTPS Failures
+
+**Hub web panel shows certificate warning** — The hub uses a self-signed certificate by default. Configure proper certificates in the panel settings or use a reverse proxy (Caddy, Nginx) with Let's Encrypt.
+
+**Agent TLS certificate expired** — The hub auto-renews agent certificates daily. If a certificate expired, run `systemctl restart l-ui-agent` on the node to trigger a fresh cert push.
+
+## Node Offline Handling
+
+When a node is unreachable for 15+ seconds, the hub marks it offline. All operations (config push, xray restart, firewall changes) are blocked until the node comes back online.
+
+To recover an offline node:
+1. Check the node's network connectivity
+2. SSH into the node and restart the agent: `systemctl restart l-ui-agent`
+3. If the agent won't start, reinstall the agent bundle from the hub panel
 
 ## Node Alerts Not Firing
 
-- Check Telegram bot settings are configured (token, chat ID).
-- Verify alert thresholds in the Telegram tab of Settings:
-  - `nodeCpuThreshold` — CPU % threshold (default 90)
-  - `nodeMemThreshold` — Memory % threshold (default 90)
-  - `nodeDiskThreshold` — Disk % threshold (default 90)
-  - `nodeDownThreshold` — Consecutive failed heartbeats before alert (default 3, ~15 seconds)
-- The `NodeAlertJob` runs every 10 seconds.
+- Verify the Telegram bot is enabled in settings
+- Check that the bot token is valid
+- Ensure the CPU/memory/disk thresholds are configured
+- Alerts fire every 10 seconds — they are not instant
 
-## Release Build Fails
+## Release Build Failures
 
-- Run `make build` locally first.
-- Make sure `frontend/public/openapi.json` and `hub/web/dist/` are up to date.
-- If the release workflow fails, check the Go and Node versions used by GitHub Actions.
+**"Error: missing l-ui-agent.service in bundle" during release** — The bundle was built from an old workflow that uses the `l-ui/` prefix. Update `.github/workflows/release.yml` to use the `l-ui-agent/` directory structure.
+
+**Windows builds fail with "missing xray dat files"** — The Windows release bundle doesn't include Xray dat files. They are downloaded separately on first run.
 
 ## Retry / Transient Errors
 
-- The hub retries transient HTTP failures automatically (3 attempts).
-- If you see repeated retries in the logs, the issue is likely persistent (network partition, down node).
-- Non-idempotent operations (AddInbound, PushConfig, InstallXray) are NOT retried to avoid duplicate side effects.
+The hub retries transient errors with exponential backoff (3 attempts, 200ms initial, 5s max, 0.2 jitter). Transient errors include:
+
+- Connection refused
+- DNS resolution failure
+- I/O timeout
+- TLS handshake failure
+- Connection reset by peer
+- Broken pipe
+- HTTP 429 (too many requests)
+- HTTP 5xx (server error)
+
+Persistent errors (4xx client errors, auth failures) are NOT retried.

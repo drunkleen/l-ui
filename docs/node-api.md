@@ -1,124 +1,26 @@
-# Node (Agent) API
+# Node / Agent API
 
-The node API is the hub's control plane for remote VPS nodes. All endpoints are prefixed with `/api/v1`.
+The agent exposes an HTTP API on its configured port (default `2054`, configurable via `LUI_WEB_PORT`). All endpoints are protected by HMAC-SHA256 request signing.
 
 ## Authentication
 
-Hub requests carry:
-- `Authorization: Bearer <token>` — the node's API token
-- `X-LUI-Timestamp` — Unix timestamp
-- `X-LUI-Nonce` — random string (24 chars)
-- `X-LUI-Signature` — HMAC-SHA256 of the request
-- `X-LUI-Body-SHA256` — SHA-256 digest of the request body (empty for GET)
+Every request must include:
 
-The node verifies the timestamp, nonce, signature, and bearer token. Requests are rejected when the signature or timestamp is invalid.
+| Header | Value |
+|--------|-------|
+| `Authorization` | `Bearer <api_token>` |
+| `X-LUI-Timestamp` | Unix epoch seconds |
+| `X-LUI-Nonce` | 24-character random string |
+| `X-LUI-Signature` | HMAC-SHA256 of canonical request |
+| `X-LUI-Body-SHA256` | SHA-256 hex digest of request body |
 
-## Node Status
+The canonical string signed by HMAC is:
 
-### `GET /api/v1/server/status`
-Returns system metrics, Xray version, and panel version.
+```
+METHOD\nPATH\nBODY_SHA256\nTIMESTAMP\nNONCE
+```
 
-### `GET /api/v1/server/health`
-Quick liveness check — returns a lightweight health status.
-
-## Configuration
-
-### `GET /api/v1/server/config`
-Returns the current node configuration.
-
-### `GET /api/v1/server/configVersion`
-Returns the current config version number (used for drift detection).
-
-### `POST /api/v1/server/pushConfig`
-Push Xray config and client list to the node. Body includes `hubNodeID`, `hubEndpoint`, `xrayConfig`, and `clientList`. Returns the new config version.
-
-## Metrics
-
-### `GET /api/v1/server/metrics`
-Returns CPU, memory, disk, and network traffic metrics.
-
-### `GET /api/v1/server/sysinfo`
-Returns detailed system information (OS, kernel, CPU, etc.).
-
-## Logs
-
-### `GET /api/v1/server/logs?lines=50&filter=&showDirect=true&showBlocked=true&showProxy=true`
-Returns recent agent log lines. Supports filtering and toggling traffic categories.
-
-## Firewall
-
-### `GET /api/v1/firewall/status`
-Returns UFW status and current rules.
-
-### `POST /api/v1/firewall/rules`
-Add a firewall rule. Body: `{"port": 443, "protocol": "tcp", "action": "allow", "comment": "HTTPS"}`.
-
-### `DELETE /api/v1/firewall/rules`
-Delete a firewall rule by number. Body: `{"rule_number": "1"}`.
-
-## Lifecycle
-
-### `POST /api/v1/restart`
-Restart the agent process.
-
-### `POST /api/v1/server/restartXrayService`
-Restart the local Xray service.
-
-### `POST /api/v1/server/updatePanel`
-Trigger agent self-update to the latest release.
-
-### `POST /api/v1/server/reinstallBundle`
-Reinstall the agent bundle from the hub (used for reconciliation).
-
-### `POST /api/v1/server/cleanup`
-Remove all Xray config, clients, and log data from the node.
-
-### `POST /api/v1/server/rotateToken`
-Rotate the API token. Body: `{"token": "new-token"}`.
-
-## Inbounds
-
-### `GET /api/v1/inbounds/list`
-List all remote inbounds with their IDs (for cache synchronization).
-
-### `POST /api/v1/inbounds/add`
-Add a new inbound. Body contains the full inbound config.
-
-### `POST /api/v1/inbounds/del/:id`
-Delete an inbound by remote ID.
-
-### `POST /api/v1/inbounds/update/:id`
-Update an inbound by remote ID.
-
-## Clients
-
-### `POST /api/v1/clients/add`
-Add a new client to an inbound.
-
-### `POST /api/v1/clients/del/:email`
-Delete a client by email.
-
-### `POST /api/v1/clients/update/:email`
-Update a client by old email. Body contains new client data.
-
-### `POST /api/v1/clients/resetTraffic/:email`
-Reset traffic counters for a specific client.
-
-### `POST /api/v1/server/resetAllTraffics`
-Reset all traffic counters on the node.
-
-## Certificates
-
-### `POST /api/v1/certs`
-Push a TLS certificate and key to the node. Body: `{"cert": "...", "key": "..."}`.
-
-### `GET /api/v1/certs/status`
-Get the node's current TLS certificate info (subject, issuer, serial, validity, fingerprint).
-
-## Web Cert Files
-
-### `GET /api/v1/server/getWebCertFiles`
-Fetch certificate file paths used by the node's web listener (for panel inbound TLS assignment).
+The hub verifies each response to prevent replay attacks (5-minute timestamp skew window, nonce dedup for 10 minutes).
 
 ## Response Format
 
@@ -128,15 +30,158 @@ All endpoints return a standard envelope:
 {
   "success": true,
   "msg": "optional message",
-  "obj": {}
+  "obj": { ... }
 }
 ```
 
-Errors set `success: false` and include a message in `msg`.
+## Endpoints
 
-## Operational Notes
+### Status
 
-- Status and heartbeat data are used by the hub dashboard
-- Stale node data is shown explicitly instead of being hidden
-- The hub treats the node as a remote agent, not as a second UI instance
-- Transient HTTP failures are automatically retried by the hub's retry layer (3 attempts, exponential backoff)
+**`GET /api/v1/status`** — System metrics and xray version.
+
+Response `obj`:
+```json
+{
+  "cpu": 12.5,
+  "mem": { "current": 524288000, "total": 1073741824 },
+  "disk": { "current": 8589934592, "total": 34359738368 },
+  "netIO": { "up": 123456, "down": 789012 },
+  "xray": { "version": "v26.4.25" },
+  "panelVersion": "0.0.1",
+  "uptime": 3600
+}
+```
+
+### Metrics
+
+**`GET /api/v1/metrics`** — Detailed system metrics.
+
+### Sysinfo
+
+**`GET /api/v1/sysinfo`** — OS, kernel, CPU info, network interfaces.
+
+### Config
+
+**`GET /api/v1/config`** — Get the currently stored config version.
+
+**`POST /api/v1/config/push`** — Push a new config to the agent. Stores in SQLite AND writes to disk + restarts Xray.
+
+```
+Body: { "hub_node_id": "...", "hub_endpoint": "...", "xray_config": {...}, "client_list": [...] }
+```
+
+**`POST /api/v1/config/apply`** — Write xray config to disk and restart Xray. Atomic: writes `config.json` to the agent's binary folder (and legacy path), then runs `systemctl restart xray`.
+
+```
+Body: { "xray_config": {...} }
+```
+
+### Xray Management
+
+**`GET /api/v1/xray/version`** — Detect the installed Xray version.
+
+**`GET /api/v1/xray/status`** — Check if Xray is running and return its version.
+
+Response:
+```json
+{ "success": true, "obj": { "version": "v26.4.25", "running": true } }
+```
+
+**`POST /api/v1/xray/install`** — Download and install a specific Xray version from GitHub.
+
+```
+Body: { "version": "v26.4.25" }
+```
+
+The agent downloads `Xray-{os}-{arch}.zip` from the official Xray-core releases, extracts the binary, and places it in the configured binary folder.
+
+**`POST /api/v1/xray/restart`** — Restart the Xray service via `systemctl restart xray`.
+
+### Logs
+
+**`GET /api/v1/logs?lines=N`** — Fetch recent agent log lines (default 50).
+
+### Firewall
+
+**`GET /api/v1/firewall/status`** — UFW status and rule list.
+
+Response:
+```json
+{ "success": true, "obj": { "active": true, "installed": true, "rules": [...] } }
+```
+
+**`POST /api/v1/firewall/rules`** — Add a firewall rule.
+
+```
+Body: { "port": "2053", "protocol": "tcp", "action": "allow", "comment": "web panel" }
+```
+
+Actions: `allow`, `deny`, `reject`, `limit`. Protocol: `tcp`, `udp` (or empty for both).
+
+**`DELETE /api/v1/firewall/rules`** — Delete a firewall rule by number.
+
+```
+Body: { "rule_number": "1" }
+```
+
+**`POST /api/v1/firewall/enable`** — Enable UFW (with `--force`).
+
+**`POST /api/v1/firewall/disable`** — Disable UFW (with `--force`).
+
+### Lifecycle
+
+**`POST /api/v1/restart`** — Restart the agent service itself.
+
+**`POST /api/v1/certs`** — Push TLS certificate and key to the agent.
+
+```
+Body: { "certPEM": "...", "keyPEM": "..." }
+```
+
+**`GET /api/v1/certs/status`** — Get the current TLS certificate metadata.
+
+**`GET /api/v1/server/getWebCertFiles`** — Get node's web TLS certificate file paths.
+
+### Health
+
+**`GET /healthz`** — Returns `{"status":"ok"}` (no auth required).
+
+**`GET /readyz`** — Returns `{"status":"ok"}` when the agent is fully ready (no auth required).
+
+### Agent-to-Hub Registration
+
+During registration, the agent calls the hub's endpoint:
+
+**`POST /panel/api/nodes/register`** — Register a new node with a one-time token.
+
+```
+Body: { "token": "...", "hostname": "...", "address": "...", "port": 2054, "version": "0.0.1" }
+```
+
+## Endpoint Summary
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/healthz` | No | Liveness check |
+| GET | `/readyz` | No | Readiness check |
+| GET | `/api/v1/status` | Yes | System status + xray version |
+| GET | `/api/v1/metrics` | Yes | System metrics |
+| GET | `/api/v1/sysinfo` | Yes | System info |
+| GET | `/api/v1/config` | Yes | Current config version |
+| POST | `/api/v1/config/push` | Yes | Push and apply config |
+| POST | `/api/v1/config/apply` | Yes | Write config to disk + restart xray |
+| GET | `/api/v1/xray/version` | Yes | Xray version |
+| GET | `/api/v1/xray/status` | Yes | Xray running + version |
+| POST | `/api/v1/xray/install` | Yes | Download and install Xray |
+| POST | `/api/v1/xray/restart` | Yes | Restart Xray service |
+| GET | `/api/v1/logs` | Yes | Agent log lines |
+| GET | `/api/v1/firewall/status` | Yes | UFW status + rules |
+| POST | `/api/v1/firewall/rules` | Yes | Add firewall rule |
+| DELETE | `/api/v1/firewall/rules` | Yes | Delete firewall rule |
+| POST | `/api/v1/firewall/enable` | Yes | Enable UFW |
+| POST | `/api/v1/firewall/disable` | Yes | Disable UFW |
+| POST | `/api/v1/restart` | Yes | Restart agent |
+| POST | `/api/v1/certs` | Yes | Push TLS cert |
+| GET | `/api/v1/certs/status` | Yes | Cert metadata |
+| GET | `/api/v1/server/getWebCertFiles` | Yes | Web cert file paths |

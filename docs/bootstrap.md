@@ -1,78 +1,93 @@
-# Bootstrap
+# Node Bootstrap
 
-Bootstrap is the process that turns a fresh VPS into a managed node. It runs as an async job tracked in the in-memory job store.
+The bootstrap flow provisions a new VPS node via SSH, installs the agent, and registers it with the hub.
 
 ## Inputs
 
-- SSH host or IP
-- SSH user
-- SSH password or SSH key (with optional passphrase)
-- SSH port (default 22)
-- Agent port (auto-selected if not specified)
-- Optional domain, ACME email, and DNS provider for TLS
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Node display name |
+| `address` | Yes | VPS IP address or hostname |
+| `sshUser` | Yes | SSH username (typically `root`) |
+| `sshPassword` | Yes | SSH password (or key-based auth via the `authorized_keys` flow) |
+| `sshPort` | No | SSH port (default `22`) |
+| `agentPort` | No | Agent HTTP port (default `2054`) |
+| `useTLS` | No | Enable TLS for agent communication |
+| `domain` | Required if TLS | Domain for Let's Encrypt certificate |
+| `acmeEmail` | No | Email for ACME registration |
 
 ## Validation
 
-The hub validates:
+Before starting the bootstrap, the hub validates:
 
-- Node name is non-empty
-- Address is a valid IP or hostname
-- SSH credentials are present (password, key, or both)
-- Remote host has `systemd` and `sudo` (or is root)
+- SSH connection is reachable (TCP dial)
+- `sudo` is available on the remote host
+- `systemd` is available on the remote host
+- OS architecture is supported (amd64, arm64, armv7, armv6, etc.)
+- Required tools exist on the remote host (`curl`, `tar`, `systemctl`)
 
-## What the Hub Checks on the Remote Host
+## Bootstrap Steps
 
-- CPU architecture (`uname -m`)
-- `sudo` availability and passwordless (or password-enabled) sudo access
-- `systemd` availability
+The bootstrap runs as an async job with real-time progress tracking. Each step reports its output and status to the hub's job store.
 
-## Flow
+| Step | Description |
+|------|-------------|
+| **detect-arch** | Runs `uname -m` on the remote host |
+| **detect-arch-retry** | Retry with fallback detection if the first attempt fails |
+| **map-arch** | Maps the detected architecture to a Go release arch name |
+| **prepare-dirs** | Creates `/usr/local/l-ui-agent/`, `/etc/l-ui/`, `/var/log/l-ui/` |
+| **build-bundle** | Resolves the agent release version from the bundle cache |
+| **upload-bundle** | Downloads the agent tarball from GitHub to the remote host |
+| **install-bundle** | Extracts the tarball and renames old-format `l-ui/` to `l-ui-agent/` |
+| **write-env** | Writes the environment file to `/etc/default/l-ui-agent` |
+| **install-service** | Installs the agent systemd unit from the bundle (or falls back to local files) |
+| **verify-bundle** | Checks that the agent binary exists and is executable |
+| **daemon-reload** | Runs `systemctl daemon-reload` |
+| **enable-service** | Enables `systemctl enable l-ui-agent` |
+| **restart-service** | Starts `systemctl restart l-ui-agent` and checks journalctl output |
+| **service-diag** | Runs diagnostic checks if the service fails to start |
+| **verify-agent** | Polls `http://127.0.0.1:{port}/api/v1/status` up to 30 times with HMAC auth |
+| **rollback** | Cleans up on failure (removes install dir, disables service) |
 
-1. **Build node** — create a `model.Node` with generated API token, auto-selected port, and defaults.
-2. **Prepare identity** — if a node with the same name already exists, reuse its API token and ID.
-3. **SSH connect** — dial the remote host with retry (3 attempts, 2–10s exponential backoff + jitter).
-4. **Detect arch** — run `uname -m` and map it to a bundle architecture.
-5. **Build bundle** — create a tarball with the agent binary, service files, and metadata.
-6. **Upload bundle** — SCP the bundle to `/tmp/l-ui-node-bundle.tar.gz` (with retry on failure, 3 attempts, 1–3s backoff).
-7. **Install bundle** — extract the tarball to `/usr/local/l-ui`, with rollback support.
-8. **Write env** — create `/etc/default/l-ui` with API token and port.
-9. **Install service** — copy the correct systemd unit file based on the OS distribution.
-10. **Verify bundle** — check the binary exists and is executable.
-11. **Start service** — `systemctl daemon-reload && systemctl enable l-ui && systemctl restart l-ui`.
-12. **Optional TLS** — install Caddy with a Let's Encrypt certificate (domain + DNS provider).
-13. **Verify agent** — poll the agent's status endpoint until it responds (up to 30 iterations, 2–4s randomized jitter).
-14. **Persist** — save the node in the database with the bundle SHA256.
+### Backward Compatibility
+
+When downloading release tarballs from old releases:
+
+- Bundles with `l-ui/` prefix are automatically renamed to `l-ui-agent/`
+- Bundles with `l-ui` binary get a symlink `l-ui-agent` → `l-ui`
+- Old service files (`l-ui.service*`) are patched to remove the `run` subcommand and fix the binary path
 
 ## Error Handling
 
-Every network-dependent step has retry logic:
-- SSH dial: 3 attempts, 2–10s backoff
-- Bundle upload: 3 attempts, 1–3s backoff
-- Agent verification: polls with 2–4s jitter
+- Each step stores its output and success status
+- On failure, the bootstrap stops and runs the cleanup step
+- The hub retries the entire bootstrap on transient SSH errors (3 attempts with backoff)
+- The frontend polls the job status every 1.2 seconds and shows the progress timeline
 
-If the service fails to start, the hub attempts a rollback:
-1. Stop the failed agent.
-2. Remove the new install.
-3. Restore the previous version (if any).
-4. Restart the old service.
+## Cleanup
 
-## Cancellation
+When a bootstrap fails, the cleanup step:
 
-- If the caller's context is canceled before the goroutine starts, the job is marked as `failed` immediately.
-- The bootstrap goroutine uses a 30-minute timeout, independent of the HTTP request context, so long-running bootstraps survive client disconnects.
+1. Removes the agent install directory
+2. Disables and stops the systemd service
+3. Removes the service unit file
+4. Removes the environment file
+5. Removes the downloaded bundle
 
-## After Bootstrap
+## TLS Bootstrap
 
-- The node should appear in the hub node list.
-- Heartbeats should start updating status and metrics.
-- If a domain is configured, HTTPS should become available after DNS resolves correctly.
-- The config version starts at `0`, indicating no config has been pushed yet.
+When `useTLS=true`, after the agent is verified:
 
-## Common Failure Points
+1. Installs Caddy as a reverse proxy
+2. Configures Caddy with the agent domain
+3. Caddy obtains a Let's Encrypt certificate automatically
+4. The hub updates the node record to use HTTPS
 
-- SSH credentials are wrong or the host key has changed
-- `sudo` is unavailable or requires a TTY
-- The host does not run `systemd` (e.g., OpenRC, SysV init)
-- DNS is not pointing at the node when HTTPS/TLS is enabled
-- Port 80 is required for Let's Encrypt HTTP-01 challenges (Caddy mode)
-- The bundle download from GitHub fails due to network restrictions
+## Post-Bootstrap
+
+After a successful bootstrap:
+
+1. The hub persists the node record to the database
+2. The frontend refetches the node list (new card appears automatically)
+3. A config push is triggered to write the xray config and restart xray
+4. The heartbeat job starts collecting metrics from the new node

@@ -459,13 +459,13 @@ func (r *Remote) ListUfwRules(ctx context.Context) (*UfwStatus, error) {
 
 func (r *Remote) AllowUfwPort(ctx context.Context, port int, protocol string) error {
 	_, err := r.do(ctx, http.MethodPost, "api/v1/firewall/rules",
-		map[string]any{"port": port, "protocol": protocol, "action": "allow"})
+		map[string]any{"port": strconv.Itoa(port), "protocol": protocol, "action": "allow"})
 	return err
 }
 
 func (r *Remote) DenyUfwPort(ctx context.Context, port int, protocol string) error {
 	_, err := r.do(ctx, http.MethodPost, "api/v1/firewall/rules",
-		map[string]any{"port": port, "protocol": protocol, "action": "deny"})
+		map[string]any{"port": strconv.Itoa(port), "protocol": protocol, "action": "deny"})
 	return err
 }
 

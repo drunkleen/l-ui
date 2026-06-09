@@ -358,6 +358,7 @@ export default function NodesPage() {
           bootstrap={bootstrap}
           bootstrapStatus={bootstrapStatus}
           onOpenChange={setFormOpen}
+          onBootstrapDone={refetch}
         />
         <NodeFirewallModal
           open={firewallOpen}

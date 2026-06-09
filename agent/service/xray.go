@@ -156,6 +156,10 @@ func (s *XrayService) InstallXray(version string) error {
 	return fmt.Errorf("xray binary not found in release zip")
 }
 
+var RestartXrayFn = func() error {
+	return exec.Command("systemctl", "restart", "xray").Run()
+}
+
 func (s *XrayService) ApplyConfig(configJSON json.RawMessage) error {
 	configPath := config.GetBinFolderPath() + "/config.json"
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
@@ -171,9 +175,17 @@ func (s *XrayService) ApplyConfig(configJSON json.RawMessage) error {
 		return fmt.Errorf("write config: %w", err)
 	}
 
-	logger.Infof("Xray config written to %s, restarting xray", configPath)
+	// Backward compat: also write to the legacy path used by pre-existing xray.service
+	legacyPath := "/usr/local/l-ui/bin/config.json"
+	if legacyPath != configPath {
+		if err := os.MkdirAll(filepath.Dir(legacyPath), 0755); err == nil {
+			_ = os.WriteFile(legacyPath, pretty, 0644)
+		}
+	}
 
-	if err := exec.Command("systemctl", "restart", "xray").Run(); err != nil {
+	logger.Infof("Xray config written to %s and legacy path, restarting xray", configPath)
+
+	if err := RestartXrayFn(); err != nil {
 		return fmt.Errorf("restart xray: %w", err)
 	}
 
@@ -181,7 +193,7 @@ func (s *XrayService) ApplyConfig(configJSON json.RawMessage) error {
 }
 
 func (s *XrayService) RestartXray() error {
-	if err := exec.Command("systemctl", "restart", "xray").Run(); err != nil {
+	if err := RestartXrayFn(); err != nil {
 		return fmt.Errorf("restart xray: %w", err)
 	}
 	return nil

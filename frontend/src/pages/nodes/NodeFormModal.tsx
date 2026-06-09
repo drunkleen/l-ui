@@ -48,6 +48,7 @@ interface NodeFormModalProps {
   bootstrap: (payload: NodeBootstrapFormValues) => Promise<Msg<NodeBootstrapJob>>;
   bootstrapStatus: (id: string) => Promise<Msg<NodeBootstrapJob>>;
   onOpenChange: (open: boolean) => void;
+  onBootstrapDone?: () => void;
 }
 
 type FormValues = NodeFormValues & Partial<NodeBootstrapFormValues>;
@@ -64,7 +65,7 @@ function defaultValues(): FormValues {
 
 export default function NodeFormModal({
   open, mode, node, testConnection, fetchFingerprint, save,
-  bootstrap, bootstrapStatus, onOpenChange,
+  bootstrap, bootstrapStatus, onOpenChange, onBootstrapDone,
 }: NodeFormModalProps) {
   const { t } = useTranslation();
   const [form] = Form.useForm<FormValues>();
@@ -77,8 +78,11 @@ export default function NodeFormModal({
   const [bootstrapJob, setBootstrapJob] = useState<NodeBootstrapJob | null>(null);
 
   useEffect(() => {
-    if (bootstrapJob?.state === 'done') close();
-  }, [bootstrapJob]);
+    if (bootstrapJob?.state === 'done') {
+      close();
+      onBootstrapDone?.();
+    }
+  }, [bootstrapJob, onBootstrapDone]);
 
   const scheme = Form.useWatch('scheme', form) ?? 'https';
   const tlsVerifyMode = Form.useWatch('tlsVerifyMode', form) ?? 'verify';

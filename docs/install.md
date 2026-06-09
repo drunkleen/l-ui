@@ -1,127 +1,166 @@
-# Install
+# Installation
 
 ## Deployment Modes
 
-L-UI supports two deployment styles:
+L-UI supports two deployment modes:
 
-- **Hub only**: run the panel centrally on one machine; add remote VPS nodes later
-- **Hub + agent nodes**: deploy the lightweight agent binary to remote VPSes over SSH or via registration tokens
+| Mode | Description |
+|------|-------------|
+| **Hub only** | Install the hub on a server. Add VPS nodes later via SSH bootstrap or registration tokens. |
+| **Hub + Agent (same host)** | Run the hub and the agent on the same machine (e.g., a VPS that acts as both control plane and a node). |
 
-## Database
+## Database Options
 
-- Default: SQLite
-- Production or multi-host: Postgres
-- MySQL/MariaDB: supported through the shared storage layer
+| Database | Default | When to Use |
+|----------|---------|-------------|
+| **SQLite** | Yes | Single-server deployment. Zero configuration. |
+| **Postgres** | No | Multi-node hub, hosted environments, or when you need replication/backup tooling. |
+| **MySQL/MariaDB** | No | Existing MySQL infrastructure. GORM-compatible. |
 
-### Recommended Layout
+Set via environment variables:
 
-- Local/dev: keep database and logs under the repo `./tmp/` directory
-- Production hub: use system paths such as `/etc/l-ui` and `/var/log/l-ui`
-- Agent nodes: local SQLite database under `/etc/l-ui/l-ui.db` (separate from the hub database)
+```bash
+export LUI_DB_TYPE=postgres
+export LUI_DB_DSN="host=localhost user=l-ui dbname=l-ui password=secret sslmode=disable"
+```
 
 ## Hub Installation
 
-1. Install the Go binary or use the release bundle via `install.sh`.
-2. Point the panel at the chosen database (`LUI_DB_FOLDER`, `LUI_DB_TYPE`, `LUI_DB_DSN`).
-3. Ensure the runtime folders exist and are writable.
-4. Start the hub and open the panel in a browser.
+### Quick Install (Linux)
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/drunkleen/l-ui/master/install.sh)
+```
+
+### Manual Install
+
+1. Download the latest hub release tarball from GitHub:
+   ```bash
+   curl -fL -o l-ui-hub.tar.gz https://github.com/drunkleen/l-ui/releases/latest/download/l-ui-hub-linux-amd64.tar.gz
+   ```
+2. Extract to `/usr/local`:
+   ```bash
+   tar -xzf l-ui-hub.tar.gz -C /usr/local
+   # Creates /usr/local/l-ui-hub/
+   ```
+3. Install the systemd service:
+   ```bash
+   cp /usr/local/l-ui-hub/l-ui.service /etc/systemd/system/l-ui.service
+   systemctl daemon-reload
+   systemctl enable --now l-ui
+   ```
+4. Verify:
+   ```bash
+   systemctl status l-ui
+   journalctl -u l-ui -n 20
+   ```
+
+The hub listens on port `2053` by default (configurable via `LUI_WEB_PORT`).
 
 ## Agent Installation
 
-### SSH Bootstrap (from the hub panel)
+Agents are installed via the hub panel in two ways:
 
-1. Create a node from the Nodes page.
-2. Enter SSH credentials (host, user, password or key, SSH port).
-3. Optionally configure TLS/domain for the agent endpoint.
-4. The hub uploads the node bundle, installs the agent, and starts it.
+### Method 1: SSH Bootstrap (Recommended)
 
-### Registration Token (curl | sh)
+1. In the hub panel, go to **Nodes → Add Node**
+2. Enter the VPS IP, SSH credentials, and desired agent port
+3. Click **Bootstrap** — the hub provisions the agent over SSH
+4. The bootstrap timeline shows progress in real-time
 
-1. Generate a registration token from the hub panel.
-2. Run the provided curl | sh command on the VPS:
-   ```bash
-   bash <(curl -Ls https://hub.example.com/install.sh) LUI_REGISTRATION_TOKEN=xxx LUI_HUB_ENDPOINT=https://hub.example.com
-   ```
-3. The agent registers itself with the hub and appears in the node list.
+The agent is installed to `/usr/local/l-ui-agent/` with systemd service `l-ui-agent.service`.
+
+### Method 2: Registration Token
+
+1. In the hub panel, go to **Nodes → Add Node -> Generate Token**
+2. Copy the displayed one-time `curl | sh` command
+3. Run it on the target VPS
+4. The agent registers itself with the hub and appears in the node list
 
 ## Docker Deployment
 
-A `docker-compose.yml` is provided for production deployment. It includes health checks,
-resource limits, log rotation, and an isolated bridge network for the `lui` and `postgres`
-services. Postgres data is stored in a named volume so it survives container restarts.
+```yaml
+version: "3.8"
+services:
+  l-ui:
+    image: ghcr.io/drunkleen/l-ui:latest
+    ports:
+      - "2053:2053"
+    volumes:
+      - l-ui-data:/etc/l-ui
+      - l-ui-logs:/var/log/l-ui
+      - l-ui-cert:/var/lib/l-ui/cert
+    environment:
+      - LUI_WEB_PORT=2053
+      - LUI_DB_TYPE=postgres
+      - LUI_DB_DSN=host=db ...
+    depends_on:
+      db:
+        condition: service_healthy
 
-```bash
-# SQLite (default) — lui service only
-docker compose up -d
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: l-ui
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
 
-# With Postgres — run the postgres profile
-docker compose --profile postgres up -d
+volumes:
+  l-ui-data:
+  l-ui-logs:
+  l-ui-cert:
+  pgdata:
 ```
 
-Set `POSTGRES_PASSWORD` in a `.env` file or environment to avoid the default:
-
-```bash
-echo "POSTGRES_PASSWORD=your-secure-password" > .env
-docker compose --profile postgres up -d
-```
-
-The compose file mounts `$PWD/db` for persistent SQLite data and `$PWD/cert` for
-certificate files. Fail2ban requires `NET_ADMIN` and `NET_RAW` capabilities or bans
-are only logged.
-
-## Docker vs Bare-Metal
-
-| Aspect | Docker Compose | Bare-Metal |
-|---|---|---|
-| Database | SQLite on bind mount, or Postgres container | SQLite on filesystem, or external Postgres |
-| Fail2ban | Requires `NET_ADMIN`/`NET_RAW` caps in compose | Works natively with iptables |
-| Updates | Rebuild the image, `docker compose pull && up -d` | Re-run `install.sh` or replace binary |
-| Log rotation | Handled by compose `logging` driver (json-file, 3 files × 10 MB) | Configure `logrotate` or journald |
-| Resource limits | Enforced via `deploy.resources.limits` | Handled by systemd or host cgroups |
-| Certificate storage | Bind mount `$PWD/cert/` | Directory of your choosing |
-| Health checks | Built-in `healthcheck` on both services | Use systemd unit `ExecStartPre` probes |
+**Note:** Docker deployments are hub-only. Agents are installed on separate VPS nodes via SSH bootstrap.
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|---|---|---|
-| `LUI_DB_FOLDER` | Directory for SQLite database | `/etc/l-ui` |
-| `LUI_DB_TYPE` | Database type (`sqlite` or `postgres`) | `sqlite` |
-| `LUI_DB_DSN` | Postgres connection string | — |
-| `LUI_LOG_FOLDER` | Log output directory | `/var/log/l-ui` |
-| `LUI_WEB_PORT` | Hub/agent HTTP port | `2053` (hub) / `2054` (agent) |
-| `LUI_DEBUG` | Enable debug log output | `false` |
-| `LUI_BOOTSTRAP_API_TOKEN` | Agent bootstrap API token | — |
-| `LUI_REGISTRATION_TOKEN` | One-time agent registration token | — |
-| `LUI_HUB_ENDPOINT` | Hub endpoint URL for registration | — |
-| `LUI_CERT_DIR` | Agent TLS certificate directory | `{DB_FOLDER}/certs` |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LUI_WEB_PORT` | `2053` | HTTP listen port |
+| `LUI_DB_FOLDER` | `/etc/l-ui` | Database file location (SQLite) |
+| `LUI_DB_TYPE` | `sqlite` | Database type: `sqlite`, `postgres`, `mysql` |
+| `LUI_DB_DSN` | — | Database connection string (for postgres/mysql) |
+| `LUI_LOG_FOLDER` | `/var/log/l-ui` | Log file directory |
+| `LUI_DEBUG` | `false` | Enable debug mode (verbose logging, Vite dev mode) |
+| `LUI_MAIN_FOLDER` | `<binary_dir>` | Install directory for binaries and config |
+| `LUI_BIN_FOLDER` | `<main_dir>/bin` | Directory for xray binary and config files |
+| `LUI_BOOTSTRAP_API_TOKEN` | — | Pre-shared token for new node registrations |
+| `LUI_REGISTRATION_TOKEN` | — | One-time token for registration flow |
+| `LUI_HUB_ENDPOINT` | — | Hub API endpoint (for agent registration) |
+| `LUI_CERT_DIR` | — | TLS certificate directory |
+| `LUI_SKIP_HSTS` | `false` | Skip HSTS header in web panel responses |
 
 ## Local Development
-
-Use the Makefile from the repo root:
 
 ```bash
 make dev
 ```
 
-That target starts the backend first, waits for readiness, then launches Vite.
+This builds the Go backend, starts the server on port 2053, waits for readiness, and starts Vite on port 5173 with HMR. Runtime data is stored in `./tmp/`.
 
 Local development login: `admin` / `admin`.
 
-## Production Releases
-
-- `make build` builds the frontend and both Go binaries (hub + agent) locally
-- Tagged pushes build release tarballs (`l-ui-hub-linux-<arch>.tar.gz` + `l-ui-agent-linux-<arch>.tar.gz`) in GitHub Actions
-- Tagged pushes also publish the production Docker image
-
 ## Installer And CLI
 
-- `install.sh` is the production installer
-- It downloads the latest release or a pinned tag, installs the service, and finishes with a command reference
-- The `l-ui` wrapper exposes service operations: `start`, `stop`, `restart`, `status`, `settings`, `enable`, `disable`, `log`, `banlog`, `update`, `legacy`, `install`, `uninstall`
-- The Go binary supports administrative subcommands:
-  - `run` — start the hub server
-  - `agent` — start the agent server
-  - `migrate` / `migrate-db` — run database migrations
-  - `setting` — read/write panel settings
-  - `cert` — manage hub web TLS certificate paths
+The `install.sh` script:
+1. Detects the OS and architecture
+2. Downloads the latest hub release tarball
+3. Installs the binary and systemd service
+4. Prints available CLI commands
+
+The hub CLI supports: `start`, `stop`, `restart`, `status`, `settings`, `enable`, `disable`, `log`, `banlog`, `update`, `legacy`, `install`, `uninstall`.
+
+The agent has no CLI — it starts automatically via systemd.
+
+## Production Releases
+
+- GitHub Actions builds release tarballs for every version tag (`v1.2.3`)
+- Hub tarball: `l-ui-hub-linux-{arch}.tar.gz` — extracts to `l-ui-hub/`
+- Agent tarball: `l-ui-agent-linux-{arch}.tar.gz` — extracts to `l-ui-agent/`
+- Docker images: `ghcr.io/drunkleen/l-ui:{version}`
+- Windows builds are available as `.zip` archives (hub only, no service support)
