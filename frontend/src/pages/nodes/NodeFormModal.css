@@ -1,118 +1,132 @@
-.test-row .hint {
+/* ── Compact form ─────────────────────────────────────────────────── */
+
+.node-form-modal .ant-modal-body {
+  padding: 16px 20px;
+}
+
+.node-form-modal .ant-form-item {
+  margin-bottom: 8px;
+}
+
+.node-form-modal .ant-form-item-label {
+  padding-bottom: 2px;
+}
+
+.node-form-modal .ant-form-item-label > label {
   font-size: 12px;
-  opacity: 0.6;
-  margin-top: 4px;
+  height: 20px;
 }
 
-.ant-form .hint {
-  font-size: 12px;
-  opacity: 0.6;
-  margin-top: 4px;
+.node-form-modal .ant-form-item-explain-error {
+  font-size: 11px;
+  min-height: 14px;
 }
 
-.test-row {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 8px;
+.node-form-modal .ant-input,
+.node-form-modal .ant-input-number,
+.node-form-modal .ant-select-selector {
+  font-size: 13px;
 }
 
-.test-result {
+.node-form-modal .ant-input-number {
   width: 100%;
 }
 
-/* Bootstrap progress timeline */
-.bootstrap-timeline {
-  margin-bottom: 16px;
+.node-form-modal .ant-alert {
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
-.bootstrap-steps {
-  position: relative;
-  padding-left: 4px;
+.node-form-modal .ant-alert-message {
+  font-size: 12px;
 }
 
-.bootstrap-step {
+/* ── Bootstrap form compact layout ────────────────────────────────── */
+
+.bootstrap-form .tls-fields {
+  margin-bottom: 4px;
+}
+
+/* ── Edit form compact layout ─────────────────────────────────────── */
+
+.edit-form .test-row {
   display: flex;
-  gap: 12px;
-  position: relative;
-  padding-bottom: 8px;
-  min-height: 40px;
-}
-
-.bootstrap-step:last-child {
-  padding-bottom: 0;
-}
-
-.bootstrap-step.is-pending {
-  opacity: 0.45;
-}
-
-.bootstrap-step-icon {
-  flex-shrink: 0;
-  width: 20px;
-  display: flex;
-  justify-content: center;
-  padding-top: 2px;
-  z-index: 1;
-}
-
-.bootstrap-step-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.bootstrap-step-header {
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
-  line-height: 24px;
+  margin-top: 4px;
 }
 
-.bootstrap-step-name {
-  font-weight: 500;
-  font-size: 14px;
+.edit-form .test-result {
+  width: 100%;
 }
 
-.bootstrap-step-badge {
+/* ── Horizontal bootstrap steps ───────────────────────────────────── */
+
+.bootstrap-steps-wrapper {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--ant-color-fill-secondary, #1e1e2e);
+  border-radius: 8px;
+  border: 1px solid var(--ant-color-border, #45475a);
+}
+
+.bootstrap-steps-scroll {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.bootstrap-steps-horizontal {
+  min-width: max-content;
+}
+
+.bootstrap-steps-horizontal .ant-steps-item {
+  flex-shrink: 0;
+}
+
+.bootstrap-steps-horizontal .ant-steps-item-title {
   font-size: 11px;
-  color: #89b4fa;
-  background: color-mix(in srgb, #89b4fa 14%, transparent);
-  border-radius: 4px;
-  padding: 0 6px;
-  line-height: 18px;
+  line-height: 1.3;
 }
+
+.bootstrap-steps-horizontal .ant-steps-item-icon {
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  font-size: 12px;
+  margin-inline-end: 4px;
+}
+
+.bootstrap-steps-horizontal .ant-steps-item-tail {
+  margin-inline-start: 22px !important;
+}
+
+.bootstrap-steps-horizontal .ant-steps-item-container {
+  padding-block: 2px;
+}
+
+.bootstrap-steps-horizontal .ant-steps-item-content {
+  min-height: auto;
+}
+
+/* ── Error output ─────────────────────────────────────────────────── */
 
 .bootstrap-step-output {
-  font-size: 12px;
+  font-size: 11px;
   background: #11111b;
   color: #cdd6f4;
   border-radius: 4px;
-  padding: 8px;
-  margin: 4px 0 0;
+  padding: 6px 8px;
+  margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
-  max-height: 200px;
+  max-height: 160px;
   overflow-y: auto;
 }
 
-.bootstrap-connector {
-  position: absolute;
-  left: 13px;
-  top: 28px;
-  bottom: 8px;
-  width: 1px;
-  background: #45475a;
-}
+/* ── Responsive tweaks ────────────────────────────────────────────── */
 
-.bootstrap-step:last-child .bootstrap-connector {
-  display: none;
-}
-
-/* Error output inside timeline panels must always have dark background */
-.bootstrap-step-body .ant-collapse-header {
-  color: #e0e0e0 !important;
-  padding-left: 0 !important;
-}
-.bootstrap-step-body .ant-collapse-content-box {
-  padding: 0 !important;
+@media (max-width: 576px) {
+  .node-form-modal .ant-modal-body {
+    padding: 12px;
+  }
 }

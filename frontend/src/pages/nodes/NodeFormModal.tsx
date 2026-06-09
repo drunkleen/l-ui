@@ -12,16 +12,13 @@ import {
   Row,
   Select,
   Space,
-  Spin,
+  Steps,
   Switch,
   Typography,
   message,
 } from 'antd';
 import {
-  CheckCircleFilled,
-  CloseCircleFilled,
   DownloadOutlined,
-  LoadingOutlined,
 } from '@ant-design/icons';
 import type { NodeRecord } from '@/api/queries/useNodesQuery';
 import type { Msg } from '@/utils';
@@ -54,38 +51,17 @@ type FormValues = NodeFormValues & Partial<NodeBootstrapFormValues>;
 
 function defaultValues(): FormValues {
   return {
-    id: 0,
-    name: '',
-    scheme: 'https',
-    address: '',
-    port: 2053,
-    basePath: '/',
-    apiToken: '',
-    enable: true,
-    allowPrivateAddress: false,
-    tlsVerifyMode: 'verify',
-    pinnedCertSha256: '',
-    sshUser: '',
-    sshPassword: '',
-    useTLS: false,
-    domain: '',
-    acmeEmail: '',
-    sshPort: 22,
-    bootstrapBase: '/',
-    group: '',
+    id: 0, name: '', scheme: 'https', address: '', port: 2053,
+    basePath: '/', apiToken: '', enable: true, allowPrivateAddress: false,
+    tlsVerifyMode: 'verify', pinnedCertSha256: '',
+    sshUser: '', sshPassword: '', useTLS: false, domain: '', acmeEmail: '',
+    sshPort: 22, bootstrapBase: '/', group: '',
   };
 }
 
 export default function NodeFormModal({
-  open,
-  mode,
-  node,
-  testConnection,
-  fetchFingerprint,
-  save,
-  bootstrap,
-  bootstrapStatus,
-  onOpenChange,
+  open, mode, node, testConnection, fetchFingerprint, save,
+  bootstrap, bootstrapStatus, onOpenChange,
 }: NodeFormModalProps) {
   const { t } = useTranslation();
   const [form] = Form.useForm<FormValues>();
@@ -97,10 +73,10 @@ export default function NodeFormModal({
   const [testResult, setTestResult] = useState<ProbeResult | null>(null);
   const [bootstrapJob, setBootstrapJob] = useState<NodeBootstrapJob | null>(null);
 
-  // Auto-close modal when bootstrap succeeds
   useEffect(() => {
     if (bootstrapJob?.state === 'done') close();
-  }, [bootstrapJob]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [bootstrapJob]);
+
   const scheme = Form.useWatch('scheme', form) ?? 'https';
   const tlsVerifyMode = Form.useWatch('tlsVerifyMode', form) ?? 'verify';
   const useTLS = Form.useWatch('useTLS', form) ?? false;
@@ -109,12 +85,7 @@ export default function NodeFormModal({
     if (!open) return;
     const base = defaultValues();
     const next: NodeFormValues = mode === 'edit' && node
-      ? {
-        ...base,
-        ...(node as unknown as Partial<NodeFormValues>),
-        id: node.id,
-        scheme: (node.scheme as 'http' | 'https') || base.scheme,
-      }
+      ? { ...base, ...(node as unknown as Partial<NodeFormValues>), id: node.id, scheme: (node.scheme as 'http' | 'https') || base.scheme }
       : base;
     if (next.scheme === 'http') next.tlsVerifyMode = 'skip';
     form.resetFields();
@@ -133,10 +104,7 @@ export default function NodeFormModal({
     };
     void refresh();
     const timer = window.setInterval(refresh, 1200);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
+    return () => { cancelled = true; window.clearInterval(timer); };
   }, [open, bootstrapJob, bootstrapStatus]);
 
   const title = useMemo(
@@ -146,15 +114,10 @@ export default function NodeFormModal({
 
   function buildPayload(values: NodeFormValues): Partial<NodeRecord> {
     return {
-      id: values.id || 0,
-      name: values.name.trim(),
-      scheme: values.scheme,
-      address: values.address.trim(),
-      port: values.port,
-      basePath: values.basePath.trim() || '/',
-      apiToken: values.apiToken.trim(),
-      enable: values.enable,
-      allowPrivateAddress: values.allowPrivateAddress,
+      id: values.id || 0, name: values.name.trim(), scheme: values.scheme,
+      address: values.address.trim(), port: values.port,
+      basePath: values.basePath.trim() || '/', apiToken: values.apiToken.trim(),
+      enable: values.enable, allowPrivateAddress: values.allowPrivateAddress,
       tlsVerifyMode: values.tlsVerifyMode,
       pinnedCertSha256: values.tlsVerifyMode === 'pin' ? values.pinnedCertSha256.trim() : '',
     };
@@ -163,46 +126,29 @@ export default function NodeFormModal({
   function buildBootstrapPayload(values: FormValues): NodeBootstrapFormValues {
     const result = NodeBootstrapFormSchema.parse(values);
     return {
-      name: result.name,
-      address: result.address,
-      sshUser: result.sshUser,
-      sshPassword: result.sshPassword,
-      useTLS: result.useTLS,
-      domain: result.domain,
-      acmeEmail: result.acmeEmail,
-      sshPort: result.sshPort,
-      agentPort: result.agentPort,
+      name: result.name, address: result.address, sshUser: result.sshUser,
+      sshPassword: result.sshPassword, useTLS: result.useTLS,
+      domain: result.domain, acmeEmail: result.acmeEmail,
+      sshPort: result.sshPort, agentPort: result.agentPort,
       bootstrapBase: result.bootstrapBase || '/',
     };
   }
 
   async function onTest() {
-    try {
-      await form.validateFields(['address', 'port']);
-    } catch {
-      return;
-    }
+    try { await form.validateFields(['address', 'port']); } catch { return; }
     setTesting(true);
     setTestResult(null);
     try {
       const payload = buildPayload(form.getFieldsValue(true));
       const msg = await testConnection(payload);
-      if (msg?.success && msg.obj) {
-        setTestResult(msg.obj);
-      } else {
-        setTestResult({ status: 'offline', error: msg?.msg || 'unknown error' });
-      }
-    } finally {
-      setTesting(false);
-    }
+      setTestResult(msg?.success && msg.obj
+        ? msg.obj
+        : { status: 'offline', error: msg?.msg || 'unknown error' });
+    } finally { setTesting(false); }
   }
 
   async function onFetchPin() {
-    try {
-      await form.validateFields(['address', 'port']);
-    } catch {
-      return;
-    }
+    try { await form.validateFields(['address', 'port']); } catch { return; }
     setFetchingPin(true);
     try {
       const payload = buildPayload(form.getFieldsValue(true));
@@ -213,9 +159,7 @@ export default function NodeFormModal({
       } else {
         messageApi.error(msg?.msg || t('pages.nodes.pinFetchFailed'));
       }
-    } finally {
-      setFetchingPin(false);
-    }
+    } finally { setFetchingPin(false); }
   }
 
   async function onFinish(values: FormValues) {
@@ -236,12 +180,9 @@ export default function NodeFormModal({
         }
         setTestResult(probe);
         const msg = await save(payload);
-        if (msg?.success) {
-          onOpenChange(false);
-        }
+        if (msg?.success) onOpenChange(false);
         return;
       }
-
       const payload = buildBootstrapPayload(values);
       if (payload.useTLS && !payload.domain.trim()) {
         messageApi.error(t('pages.nodes.domainRequired'));
@@ -254,14 +195,17 @@ export default function NodeFormModal({
       } else {
         messageApi.error(msg?.msg || t('pages.nodes.bootstrapFailed'));
       }
-    } finally {
-      setSubmitting(false);
-    }
+    } finally { setSubmitting(false); }
   }
 
-  function close() {
-    if (!submitting) onOpenChange(false);
-  }
+  function close() { if (!submitting) onOpenChange(false); }
+
+  const onOk = useCallback(() => {
+    if (mode === 'add' && bootstrapJob?.state === 'done') { close(); return; }
+    form.submit();
+  }, [mode, bootstrapJob, form]);
+
+  const isRunning = bootstrapJob?.state === 'queued' || bootstrapJob?.state === 'running';
 
   return (
     <>
@@ -269,18 +213,13 @@ export default function NodeFormModal({
       <Modal
         open={open}
         title={title}
-        confirmLoading={submitting || (bootstrapJob?.state === 'queued' || bootstrapJob?.state === 'running')}
+        confirmLoading={submitting || isRunning}
         okText={mode === 'add' && bootstrapJob?.state === 'done' ? t('close') : (mode === 'add' ? t('pages.nodes.bootstrapNode') : t('save'))}
         cancelText={t('cancel')}
         mask={{ closable: false }}
-        width="760px"
-        onOk={() => {
-          if (mode === 'add' && bootstrapJob?.state === 'done') {
-            close();
-            return;
-          }
-          form.submit();
-        }}
+        width={mode === 'add' ? '680px' : '720px'}
+        className="node-form-modal"
+        onOk={onOk}
         onCancel={close}
       >
         <Form
@@ -288,202 +227,149 @@ export default function NodeFormModal({
           layout="vertical"
           initialValues={defaultValues()}
           onFinish={onFinish}
+        >
+          <Form.Item
+            label={t('pages.nodes.name')}
+            name="name"
+            rules={[antdRule(mode === 'add' ? NodeBootstrapFormSchema.shape.name : NodeFormSchema.shape.name, t)]}
           >
-            <Form.Item
-              label={t('pages.nodes.name')}
-              name="name"
-              rules={[antdRule(mode === 'add' ? NodeBootstrapFormSchema.shape.name : NodeFormSchema.shape.name, t)]}
-            >
-              <Input placeholder={t('pages.nodes.namePlaceholder')} />
-            </Form.Item>
+            <Input placeholder={t('pages.nodes.namePlaceholder')} />
+          </Form.Item>
 
           {mode === 'add' ? (
-            <>
-              <Row gutter={16}>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label={t('pages.nodes.sshHost')}
-                    name="address"
-                    rules={[antdRule(NodeBootstrapFormSchema.shape.address, t)]}
-                  >
-                    <Input placeholder={t('pages.nodes.sshHostPlaceholder')} />
+            <div className="bootstrap-form">
+              <Row gutter={8}>
+                <Col span={10}>
+                  <Form.Item label="SSH Host" name="address" rules={[antdRule(NodeBootstrapFormSchema.shape.address, t)]}>
+                    <Input placeholder="192.168.1.1" />
                   </Form.Item>
                 </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label={t('pages.nodes.sshUser')}
-                    name="sshUser"
-                    rules={[antdRule(NodeBootstrapFormSchema.shape.sshUser, t)]}
-                  >
-                    <Input />
+                <Col span={7}>
+                  <Form.Item label="User" name="sshUser" rules={[antdRule(NodeBootstrapFormSchema.shape.sshUser, t)]}>
+                    <Input placeholder="root" />
                   </Form.Item>
                 </Col>
-              </Row>
-
-              <Row gutter={16}>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label={t('pages.nodes.sshPassword')}
-                    name="sshPassword"
-                    rules={[antdRule(NodeBootstrapFormSchema.shape.sshPassword, t)]}
-                  >
+                <Col span={7}>
+                  <Form.Item label="Password" name="sshPassword" rules={[antdRule(NodeBootstrapFormSchema.shape.sshPassword, t)]}>
                     <Input.Password />
                   </Form.Item>
                 </Col>
-                <Col xs={12} md={6}>
-                  <Form.Item
-                    label={t('pages.nodes.sshPort')}
-                    name="sshPort"
-                    rules={[antdRule(NodeBootstrapFormSchema.shape.sshPort, t)]}
-                  >
+              </Row>
+
+              <Row gutter={8}>
+                <Col span={8}>
+                  <Form.Item label="SSH Port" name="sshPort" rules={[antdRule(NodeBootstrapFormSchema.shape.sshPort, t)]}>
                     <InputNumber min={1} max={65535} style={{ width: '100%' }} />
                   </Form.Item>
                 </Col>
-                <Col xs={12} md={6}>
-                  <Form.Item
-                    label={t('pages.nodes.agentPort')}
-                    name="agentPort"
-                    rules={[antdRule(NodeBootstrapFormSchema.shape.agentPort, t)]}
-                  >
+                <Col span={8}>
+                  <Form.Item label="Agent Port" name="agentPort" rules={[antdRule(NodeBootstrapFormSchema.shape.agentPort, t)]}>
                     <InputNumber min={1} max={65535} placeholder="auto" style={{ width: '100%' }} />
                   </Form.Item>
                 </Col>
+                <Col span={8}>
+                  <Form.Item label=" " colon={false}>
+                    <Space style={{ paddingTop: 4 }}>
+                      <Form.Item name="useTLS" valuePropName="checked" noStyle>
+                        <Switch size="small" />
+                      </Form.Item>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>TLS</Typography.Text>
+                    </Space>
+                  </Form.Item>
+                </Col>
               </Row>
 
-              <Form.Item
-                label={t('pages.nodes.useTls')}
-                name="useTLS"
-                valuePropName="checked"
-                extra={t('pages.nodes.useTlsHint')}
-              >
-                <Switch />
-              </Form.Item>
-
               {useTLS && (
-                <>
-                  <Form.Item
-                    label={t('pages.nodes.domain')}
-                    name="domain"
-                    rules={[
-                      { required: useTLS, message: t('pages.nodes.domainRequired') },
-                      antdRule(NodeBootstrapFormSchema.shape.domain, t),
-                    ]}
-                    extra={t('pages.nodes.domainHint')}
-                  >
-                    <Input placeholder={t('pages.nodes.domainPlaceholder')} />
-                  </Form.Item>
-
-                  <Form.Item
-                    label={t('pages.nodes.acmeEmail')}
-                    name="acmeEmail"
-                    extra={t('pages.nodes.acmeEmailHint')}
-                  >
-                    <Input placeholder={t('pages.nodes.acmeEmailPlaceholder')} />
-                  </Form.Item>
-
-                  <Alert
-                    type="info"
-                    showIcon
-                    style={{ marginBottom: 16 }}
-                    message={t('pages.nodes.useTlsNotice')}
-                  />
-                </>
+                <div className="tls-fields">
+                  <Row gutter={8}>
+                    <Col span={12}>
+                      <Form.Item label={t('pages.nodes.domain')} name="domain" rules={[{ required: true, message: t('pages.nodes.domainRequired') }, antdRule(NodeBootstrapFormSchema.shape.domain, t)]}>
+                        <Input placeholder={t('pages.nodes.domainPlaceholder')} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item label={t('pages.nodes.acmeEmail')} name="acmeEmail">
+                        <Input placeholder={t('pages.nodes.acmeEmailPlaceholder')} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </div>
               )}
 
               {bootstrapJob && <BootstrapTimeline job={bootstrapJob} />}
-            </>
+            </div>
           ) : (
-            <>
-              <Row gutter={16}>
-                <Col xs={24} md={6}>
+            <div className="edit-form">
+              <Row gutter={8}>
+                <Col span={5}>
                   <Form.Item label={t('pages.nodes.scheme')} name="scheme">
                     <Select
-                      options={[
-                        { value: 'https', label: 'https' },
-                        { value: 'http', label: 'http' },
-                      ]}
-                      onChange={(value) => {
-                        if (value === 'http') form.setFieldValue('tlsVerifyMode', 'skip');
-                      }}
+                      options={[{ value: 'https', label: 'https' }, { value: 'http', label: 'http' }]}
+                      onChange={(v) => { if (v === 'http') form.setFieldValue('tlsVerifyMode', 'skip'); }}
                     />
                   </Form.Item>
                 </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label={t('pages.nodes.address')}
-                    name="address"
-                    rules={[antdRule(NodeFormSchema.shape.address, t)]}
-                  >
+                <Col span={14}>
+                  <Form.Item label={t('pages.nodes.address')} name="address" rules={[antdRule(NodeFormSchema.shape.address, t)]}>
                     <Input placeholder={t('pages.nodes.addressPlaceholder')} />
                   </Form.Item>
                 </Col>
-                <Col xs={24} md={6}>
-                  <Form.Item
-                    label={t('pages.nodes.port')}
-                    name="port"
-                    rules={[antdRule(NodeFormSchema.shape.port, t)]}
-                  >
+                <Col span={5}>
+                  <Form.Item label={t('pages.nodes.port')} name="port" rules={[antdRule(NodeFormSchema.shape.port, t)]}>
                     <InputNumber min={1} max={65535} style={{ width: '100%' }} />
                   </Form.Item>
                 </Col>
               </Row>
 
-              <Row gutter={16}>
-                <Col xs={24} md={12}>
+              <Row gutter={8}>
+                <Col span={12}>
                   <Form.Item label={t('pages.nodes.basePath')} name="basePath">
                     <Input placeholder="/" />
                   </Form.Item>
                 </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label={t('pages.nodes.enable')}
-                    name="enable"
-                    valuePropName="checked"
-                  >
+                <Col span={6}>
+                  <Form.Item label={t('pages.nodes.enable')} name="enable" valuePropName="checked">
+                    <Switch />
+                  </Form.Item>
+                </Col>
+                <Col span={6}>
+                  <Form.Item label={t('pages.nodes.allowPrivateAddress')} name="allowPrivateAddress" valuePropName="checked">
                     <Switch />
                   </Form.Item>
                 </Col>
               </Row>
 
-              <Form.Item
-                label={t('pages.nodes.allowPrivateAddress')}
-                name="allowPrivateAddress"
-                valuePropName="checked"
-                extra={t('pages.nodes.allowPrivateAddressHint')}
-              >
-                <Switch />
-              </Form.Item>
-
-              <Form.Item
-                label={t('pages.nodes.tlsVerifyMode')}
-                name="tlsVerifyMode"
-                extra={t('pages.nodes.tlsVerifyModeHint')}
-              >
-                <Select
-                  disabled={scheme === 'http'}
-                  options={[
-                    { value: 'verify', label: t('pages.nodes.tlsVerify') },
-                    { value: 'pin', label: t('pages.nodes.tlsPin') },
-                    { value: 'skip', label: t('pages.nodes.tlsSkip') },
-                  ]}
-                />
-              </Form.Item>
+              <Row gutter={8}>
+                <Col span={8}>
+                  <Form.Item label={t('pages.nodes.tlsVerifyMode')} name="tlsVerifyMode">
+                    <Select
+                      disabled={scheme === 'http'}
+                      options={[
+                        { value: 'verify', label: t('pages.nodes.tlsVerify') },
+                        { value: 'pin', label: t('pages.nodes.tlsPin') },
+                        { value: 'skip', label: t('pages.nodes.tlsSkip') },
+                      ]}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item label={t('pages.nodes.group')} name="group">
+                    <Input placeholder={t('pages.nodes.groupPlaceholder')} />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item label={t('pages.nodes.apiToken')} name="apiToken" rules={[antdRule(NodeFormSchema.shape.apiToken, t)]}>
+                    <Input.Password placeholder="Bearer token" />
+                  </Form.Item>
+                </Col>
+              </Row>
 
               {tlsVerifyMode === 'skip' && (
-                <Alert
-                  type="warning"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                  title={t('pages.nodes.tlsSkipWarning')}
-                />
+                <Alert type="warning" showIcon style={{ marginBottom: 12 }} title={t('pages.nodes.tlsSkipWarning')} />
               )}
 
               {tlsVerifyMode === 'pin' && (
-                <Form.Item
-                  label={t('pages.nodes.pinnedCert')}
-                  name="pinnedCertSha256"
-                  extra={t('pages.nodes.pinnedCertHint')}
-                >
+                <Form.Item label={t('pages.nodes.pinnedCert')} name="pinnedCertSha256" extra={t('pages.nodes.pinnedCertHint')}>
                   <Input.Search
                     placeholder={t('pages.nodes.pinnedCertPlaceholder')}
                     enterButton={t('pages.nodes.fetchPin')}
@@ -493,22 +379,6 @@ export default function NodeFormModal({
                 </Form.Item>
               )}
 
-              <Form.Item
-                label={t('pages.nodes.group') || 'Group'}
-                name="group"
-              >
-                <Input placeholder={t('pages.nodes.groupPlaceholder') || 'e.g. eu, asia, production'} />
-              </Form.Item>
-
-              <Form.Item
-                label={t('pages.nodes.apiToken')}
-                name="apiToken"
-                rules={[antdRule(NodeFormSchema.shape.apiToken, t)]}
-                extra={t('pages.nodes.apiTokenHint')}
-              >
-                <Input.Password placeholder={t('pages.nodes.apiTokenPlaceholder')} />
-              </Form.Item>
-
               <div className="test-row">
                 <Button type="default" loading={testing} onClick={onTest}>
                   {t('pages.nodes.testConnection')}
@@ -516,24 +386,14 @@ export default function NodeFormModal({
                 {testResult && (
                   <div className="test-result">
                     {testResult.status === 'online' ? (
-                      <Alert
-                        type="success"
-                        showIcon
-                        title={t('pages.nodes.connectionOk', { ms: testResult.latencyMs })}
-                        description={testResult.xrayVersion ? `Xray ${testResult.xrayVersion}` : undefined}
-                      />
+                      <Alert type="success" showIcon title={t('pages.nodes.connectionOk', { ms: testResult.latencyMs })} description={testResult.xrayVersion ? `Xray ${testResult.xrayVersion}` : undefined} />
                     ) : (
-                      <Alert
-                        type="error"
-                        showIcon
-                        title={t('pages.nodes.connectionFailed')}
-                        description={testResult.error}
-                      />
+                      <Alert type="error" showIcon title={t('pages.nodes.connectionFailed')} description={testResult.error} />
                     )}
                   </div>
                 )}
               </div>
-            </>
+            </div>
           )}
         </Form>
       </Modal>
@@ -541,38 +401,81 @@ export default function NodeFormModal({
   );
 }
 
-// ─── Bootstrap progress timeline ───────────────────────────────────────
+// ─── Bootstrap progress steps (horizontal) ────────────────────────────
+
+const STEP_ORDER = [
+  'detect-arch', 'detect-arch-retry', 'map-arch', 'prepare-dirs',
+  'build-bundle', 'upload-bundle', 'install-bundle', 'write-env',
+  'install-service', 'verify-bundle', 'daemon-reload', 'enable-service',
+  'restart-service', 'service-diag', 'rollback',
+] as const;
+
+const STEP_LABELS: Record<string, string> = {
+  'detect-arch':       'Arch',
+  'detect-arch-retry': 'Retry',
+  'map-arch':          'Map',
+  'prepare-dirs':      'Dirs',
+  'build-bundle':      'Bundle',
+  'upload-bundle':     'Upload',
+  'install-bundle':    'Extract',
+  'write-env':         'Config',
+  'install-service':   'Systemd',
+  'verify-bundle':     'Verify',
+  'daemon-reload':     'Reload',
+  'enable-service':    'Enable',
+  'restart-service':   'Start',
+  'service-diag':      'Diag',
+  rollback:            'Rollback',
+};
 
 interface BootstrapTimelineProps {
   job: NodeBootstrapJob;
 }
 
-const STEP_LABELS: Record<string, string> = {
-  'detect-arch':      'Detect architecture',
-  'detect-arch-retry':'Detect architecture (retry)',
-  'map-arch':         'Map architecture',
-  'prepare-dirs':     'Prepare directories',
-  'build-bundle':     'Build release bundle',
-  'upload-bundle':    'Upload bundle to node',
-  'install-bundle':   'Extract bundle',
-  'write-env':        'Write environment config',
-  'install-service':  'Install systemd service',
-  'verify-bundle':    'Verify bundle integrity',
-  'daemon-reload':    'Reload systemd',
-  'enable-service':   'Enable service',
-  'restart-service':  'Start service',
-  'service-diag':     'Service diagnostics',
-  rollback:           'Rollback',
-};
-
-function stepLabel(name: string): string {
-  return STEP_LABELS[name] ?? name;
-}
-
 function BootstrapTimeline({ job }: BootstrapTimelineProps) {
   const { t } = useTranslation();
-  const lastStepIdx = (job.steps?.length ?? 1) - 1;
   const hasError = job.state === 'failed' || job.steps?.some((s) => !s.ok);
+  const isRunning = job.state === 'queued' || job.state === 'running';
+
+  // Build step map keyed by name
+  const stepMap = useMemo(() => {
+    const m = new Map<string, { ok: boolean; output?: string }>();
+    for (const s of job.steps ?? []) m.set(s.name, s);
+    return m;
+  }, [job.steps]);
+
+  // Find current step index in the full ordered list
+  const { currentIdx, items } = useMemo(() => {
+    let current = -1;
+    const stepItems: { title: string; status: 'finish' | 'process' | 'wait' | 'error'; description?: string }[] = [];
+
+    for (let i = 0; i < STEP_ORDER.length; i++) {
+      const name = STEP_ORDER[i];
+      const step = stepMap.get(name);
+
+      if (!step) {
+        // Not yet reached
+        stepItems.push({ title: STEP_LABELS[name] ?? name, status: 'wait' });
+        continue;
+      }
+
+      if (step.ok) {
+        stepItems.push({ title: STEP_LABELS[name] ?? name, status: 'finish' });
+        continue;
+      }
+
+      // Non-ok step — either current or error
+      if (isRunning && current < 0) {
+        current = i;
+        stepItems.push({ title: STEP_LABELS[name] ?? name, status: 'process' });
+      } else {
+        stepItems.push({ title: STEP_LABELS[name] ?? name, status: 'error' });
+        if (current < 0) current = i;
+      }
+    }
+
+    return { currentIdx: current, items: stepItems };
+  }, [stepMap, isRunning]);
 
   function generateLogText(): string {
     const lines: string[] = [];
@@ -580,17 +483,13 @@ function BootstrapTimeline({ job }: BootstrapTimelineProps) {
     lines.push(`State: ${job.state}`);
     lines.push('');
     for (const step of job.steps ?? []) {
-      lines.push(`  ${step.ok ? '✓' : '✗'} ${stepLabel(step.name)}`);
+      lines.push(`  ${step.ok ? '✓' : '✗'} ${STEP_LABELS[step.name] ?? step.name}`);
       if (step.output) {
-        for (const l of step.output.trim().split('\n')) {
-          lines.push(`      ${l}`);
-        }
+        for (const l of step.output.trim().split('\n')) lines.push(`      ${l}`);
       }
       lines.push('');
     }
-    if (job.error) {
-      lines.push(`Error: ${job.error}`);
-    }
+    if (job.error) lines.push(`Error: ${job.error}`);
     return lines.join('\n');
   }
 
@@ -605,62 +504,54 @@ function BootstrapTimeline({ job }: BootstrapTimelineProps) {
     URL.revokeObjectURL(url);
   }, [job]);
 
+  // Collect error steps for details display
+  const errorSteps = useMemo(() =>
+    (job.steps ?? []).filter((s) => !s.ok && s.output),
+    [job.steps],
+  );
+
   return (
-    <div className="bootstrap-timeline">
-      <Typography.Title level={5} style={{ marginTop: 0, marginBottom: 16 }}>
+    <div className="bootstrap-steps-wrapper">
+      <Typography.Text strong style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>
         {job.state === 'done'
           ? t('pages.nodes.bootstrapSuccess')
           : job.state === 'failed'
             ? t('pages.nodes.bootstrapFailed')
             : t('pages.nodes.bootstrapRunning')}
-      </Typography.Title>
+      </Typography.Text>
 
-      <div className="bootstrap-steps">
-        {(job.steps ?? []).map((step, idx) => {
-          const isRunning = !step.ok && idx === lastStepIdx && (job.state === 'running' || job.state === 'queued');
-          const isPending = !step.ok && !isRunning;
-          const icon = step.ok
-            ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />
-            : isRunning
-              ? <Spin indicator={<LoadingOutlined style={{ fontSize: 18, color: '#1677ff' }} spin />} />
-              : <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />;
-
-          return (
-            <div key={step.name} className={`bootstrap-step${isRunning ? ' is-current' : ''}${isPending ? ' is-pending' : ''}`}>
-              <div className="bootstrap-step-icon">{icon}</div>
-              <div className="bootstrap-step-body">
-                <div className="bootstrap-step-header">
-                  <span className="bootstrap-step-name">{stepLabel(step.name)}</span>
-                  {isRunning && <span className="bootstrap-step-badge">{t('pages.nodes.inProgress')}</span>}
-                </div>
-                {step.output && !step.ok && (
-                  <Collapse
-                    ghost
-                    size="small"
-                    items={[{
-                      key: 'output',
-                      label: t('pages.nodes.bootstrapErrorDetails') || 'Error details',
-                      children: (
-                        <pre className="bootstrap-step-output">{step.output}</pre>
-                      ),
-                    }]}
-                  />
-                )}
-              </div>
-              {/* connector line */}
-              {idx < lastStepIdx && <div className="bootstrap-connector" />}
-            </div>
-          );
-        })}
+      <div className="bootstrap-steps-scroll">
+        <Steps
+          direction="horizontal"
+          size="small"
+          current={currentIdx}
+          items={items}
+          className="bootstrap-steps-horizontal"
+        />
       </div>
 
+      {errorSteps.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          {errorSteps.map((step) => (
+            <Collapse
+              key={step.name}
+              ghost
+              size="small"
+              items={[{
+                key: step.name,
+                label: `${STEP_LABELS[step.name] ?? step.name} — ${t('pages.nodes.bootstrapErrorDetails') || 'details'}`,
+                children: <pre className="bootstrap-step-output">{step.output}</pre>,
+              }]}
+            />
+          ))}
+        </div>
+      )}
+
       {hasError && (
-        <div style={{ marginTop: 16, textAlign: 'center' }}>
-          <Space>
-            <Button icon={<DownloadOutlined />} onClick={downloadLog}>
-              {t('pages.nodes.downloadLog') || 'Download Log'}
-            </Button>
-          </Space>
+        <div style={{ marginTop: 8, textAlign: 'center' }}>
+          <Button size="small" icon={<DownloadOutlined />} onClick={downloadLog}>
+            {t('pages.nodes.downloadLog') || 'Download Log'}
+          </Button>
         </div>
       )}
 
@@ -668,7 +559,7 @@ function BootstrapTimeline({ job }: BootstrapTimelineProps) {
         <Alert
           type="error"
           showIcon
-          style={{ marginTop: 12 }}
+          style={{ marginTop: 8 }}
           message={t('pages.nodes.bootstrapFailed')}
           description={job.error}
         />
