@@ -455,6 +455,13 @@ if [ -d /usr/local/l-ui-agent ]; then
   mv /usr/local/l-ui-agent /usr/local/l-ui-agent.previous
 fi
 tar -xzf /tmp/l-ui-agent.tar.gz -C /usr/local
+# Backward compat: old-format bundles extract as l-ui/ instead of l-ui-agent/
+if [ -d /usr/local/l-ui ] && [ ! -d /usr/local/l-ui-agent ]; then
+  mv /usr/local/l-ui /usr/local/l-ui-agent
+fi
+if [ -d /usr/local/l-ui.previous ] && [ ! -d /usr/local/l-ui-agent.previous ]; then
+  mv /usr/local/l-ui.previous /usr/local/l-ui-agent.previous
+fi
 `
 	out, err = sshutil.RunSSHCommand(conn, req.SSHPassword, useSudo, extractCmd)
 	if err != nil {
@@ -499,12 +506,26 @@ elif [ -f /usr/local/l-ui-agent/l-ui-agent.service.arch ]; then
   esac
 elif [ -f /usr/local/l-ui-agent/l-ui-agent.service.rhel ]; then
   case "$release" in
-    ubuntu|debian|armbian) cp -f /usr/local/l-ui-agent/l-ui-agent.service.debian /etc/systemd/system/l-ui-agent.service ;;
+    ubuntu|debian|armbian) cp -f /usr/local/l-ui-agent/l-ui-agent.service.rhel /etc/systemd/system/l-ui-agent.service ;;
     arch|manjaro|parch) cp -f /usr/local/l-ui-agent/l-ui-agent.service.arch /etc/systemd/system/l-ui-agent.service ;;
     *) cp -f /usr/local/l-ui-agent/l-ui-agent.service.rhel /etc/systemd/system/l-ui-agent.service ;;
   esac
 else
-  echo 'missing l-ui-agent.service in bundle'; exit 1
+  # Backward compat: old-format bundles have l-ui.service* instead of l-ui-agent.service*
+  if [ -f /usr/local/l-ui-agent/l-ui.service ]; then
+    cp -f /usr/local/l-ui-agent/l-ui.service /etc/systemd/system/l-ui-agent.service
+    # Strip 'run' subcommand from old hub service files
+    sed -i 's|ExecStart=/usr/local/l-ui-agent/l-ui run|ExecStart=/usr/local/l-ui-agent/l-ui-agent|' /etc/systemd/system/l-ui-agent.service
+  elif [ -f /usr/local/l-ui-agent/l-ui.service.debian ]; then
+    case "$release" in
+      ubuntu|debian|armbian) cp -f /usr/local/l-ui-agent/l-ui.service.debian /etc/systemd/system/l-ui-agent.service ;;
+      arch|manjaro|parch) cp -f /usr/local/l-ui-agent/l-ui.service.arch /etc/systemd/system/l-ui-agent.service ;;
+      *) cp -f /usr/local/l-ui-agent/l-ui.service.rhel /etc/systemd/system/l-ui-agent.service ;;
+    esac
+    sed -i 's|ExecStart=/usr/local/l-ui-agent/l-ui run|ExecStart=/usr/local/l-ui-agent/l-ui-agent|' /etc/systemd/system/l-ui-agent.service
+  else
+    echo 'missing l-ui-agent.service in bundle'; exit 1
+  fi
 fi
 chown root:root /etc/systemd/system/l-ui-agent.service
 chmod 644 /etc/systemd/system/l-ui-agent.service
@@ -531,7 +552,12 @@ chmod 644 /etc/systemd/system/l-ui-agent.service
 
 	binaryCheckCmd := `set -e
 if [ ! -f /usr/local/l-ui-agent/l-ui-agent ]; then
-  echo 'missing l-ui-agent executable in bundle'; exit 1
+  # Backward compat: old-format bundles have l-ui instead of l-ui-agent
+  if [ -f /usr/local/l-ui-agent/l-ui ]; then
+    ln -sf l-ui /usr/local/l-ui-agent/l-ui-agent
+  else
+    echo 'missing l-ui-agent executable in bundle'; exit 1
+  fi
 fi
 chmod 755 /usr/local/l-ui-agent/l-ui-agent
 `

@@ -108,6 +108,72 @@
   min-height: auto;
 }
 
+/* ── Dark theme overrides for Steps ────────────────────────────────── */
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-wait .ant-steps-item-icon {
+  background: #313244;
+  border-color: #45475a;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-wait .ant-steps-item-icon .ant-steps-icon {
+  color: #6c7086;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-wait .ant-steps-item-title {
+  color: #6c7086;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-process .ant-steps-item-icon {
+  background: #89b4fa;
+  border-color: #89b4fa;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-process .ant-steps-item-icon .ant-steps-icon {
+  color: #1e1e2e;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-process .ant-steps-item-title {
+  color: #cdd6f4;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-finish .ant-steps-item-icon {
+  background: transparent;
+  border-color: #52c41a;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-finish .ant-steps-item-icon .ant-steps-icon {
+  color: #52c41a;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-finish .ant-steps-item-title {
+  color: #a6e3a1;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-error .ant-steps-item-icon {
+  background: transparent;
+  border-color: #ff4d4f;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-error .ant-steps-item-icon .ant-steps-icon {
+  color: #ff4d4f;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-error .ant-steps-item-title {
+  color: #f38ba8;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-tail::after {
+  background: #45475a !important;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-finish .ant-steps-item-tail::after {
+  background: #52c41a !important;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-error .ant-steps-item-tail::after {
+  background: #ff4d4f !important;
+}
+
 /* ── Error output ─────────────────────────────────────────────────── */
 
 .bootstrap-step-output {
