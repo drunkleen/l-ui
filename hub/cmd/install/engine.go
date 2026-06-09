@@ -1,6 +1,7 @@
 package install
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -237,8 +238,11 @@ func (e *Engine) installServiceFile() error {
 	if err != nil {
 		return fmt.Errorf("service file not found in bundle: %w", err)
 	}
-	// Patch ExecStart to include 'run' subcommand
-	content := strings.ReplaceAll(string(data), "ExecStart=/usr/local/l-ui/l-ui", "ExecStart=/usr/local/l-ui/l-ui run")
+	// Patch ExecStart to include 'run' subcommand if missing
+	content := string(data)
+	if !bytes.Contains(data, []byte("/usr/local/l-ui/l-ui run")) {
+		content = strings.ReplaceAll(content, "ExecStart=/usr/local/l-ui/l-ui", "ExecStart=/usr/local/l-ui/l-ui run")
+	}
 	if err := os.WriteFile(svcDst, []byte(content), 0644); err != nil {
 		return fmt.Errorf("write service file: %w", err)
 	}

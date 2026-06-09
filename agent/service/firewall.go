@@ -1,10 +1,12 @@
 package service
 
 import (
-	"os/exec"
-	"strings"
+	"fmt"
+
+	"github.com/drunkleen/l-ui/internal/ufw"
 )
 
+// FirewallRule is a single UFW rule for API responses.
 type FirewallRule struct {
 	Port     string `json:"port"`
 	Protocol string `json:"protocol"`
@@ -12,6 +14,7 @@ type FirewallRule struct {
 	Comment  string `json:"comment,omitempty"`
 }
 
+// FirewallStatus is the current UFW state for API responses.
 type FirewallStatus struct {
 	Active    bool           `json:"active"`
 	Installed bool           `json:"installed"`
@@ -25,127 +28,88 @@ func NewFirewallService() *FirewallService {
 }
 
 func (s *FirewallService) GetStatus() (*FirewallStatus, error) {
-	installed := false
-	if _, err := exec.Command("ufw", "--version").Output(); err == nil {
-		installed = true
+	installed := ufw.IsInstalled()
+	if !installed {
+		return &FirewallStatus{Installed: false, Rules: []FirewallRule{}}, nil
 	}
 
-	active := false
-	if installed {
-		if out, err := exec.Command("ufw", "status").Output(); err == nil {
-			active = strings.Contains(string(out), "active")
-		}
+	active, err := ufw.IsActive()
+	if err != nil {
+		active = false
 	}
 
 	rules, _ := s.GetRules()
 
 	return &FirewallStatus{
 		Active:    active,
-		Installed: installed,
+		Installed: true,
 		Rules:     rules,
 	}, nil
 }
 
 func (s *FirewallService) GetRules() ([]FirewallRule, error) {
-	out, err := exec.Command("ufw", "status", "numbered").Output()
+	raw, _, err := ufw.GetRulesOutput()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get ufw rules: %w", err)
 	}
-	return ParseUFWRules(string(out)), nil
+
+	parsed := ufw.ParseRules(raw)
+	rules := make([]FirewallRule, 0, len(parsed))
+	for _, r := range parsed {
+		rules = append(rules, FirewallRule{
+			Port:     r.Port,
+			Protocol: r.Protocol,
+			Action:   r.Action,
+			Comment:  r.Comment,
+		})
+	}
+	return rules, nil
 }
 
 func (s *FirewallService) AddRule(port, protocol, action, comment string) error {
-	args := []string{action, port}
-	if protocol != "" {
-		args = append(args, "proto", protocol)
+	p, pErr := ufw.SanitizePort(port)
+	if pErr != nil {
+		return fmt.Errorf("invalid port: %w", pErr)
 	}
-	if comment != "" {
-		args = append(args, "comment", comment)
+	proto, prErr := ufw.SanitizeProtocol(protocol)
+	if prErr != nil {
+		return fmt.Errorf("invalid protocol: %w", prErr)
 	}
-	return exec.Command("ufw", args...).Run()
+
+	switch action {
+	case "allow":
+		return ufw.RunAllow(p, proto, comment)
+	case "deny":
+		return ufw.RunDeny(p, proto, comment)
+	default:
+		return fmt.Errorf("unsupported action: %s", action)
+	}
 }
 
 func (s *FirewallService) DeleteRule(ruleNum string) error {
-	return exec.Command("ufw", "--force", "delete", ruleNum).Run()
+	return ufw.RunDelete(ruleNum)
 }
 
 func (s *FirewallService) Enable() error {
-	return exec.Command("ufw", "--force", "enable").Run()
+	return ufw.RunEnable()
 }
 
 func (s *FirewallService) Disable() error {
-	return exec.Command("ufw", "--force", "disable").Run()
+	return ufw.RunDisable()
 }
 
+// Deprecated: ParseUFWRules moved to internal/ufw.ParseRules.
+// Kept for backward compatibility with existing callers.
 func ParseUFWRules(output string) []FirewallRule {
-	var rules []FirewallRule
-	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || !strings.Contains(line, "ALLOW") && !strings.Contains(line, "DENY") && !strings.Contains(line, "REJECT") && !strings.Contains(line, "LIMIT") {
-			continue
-		}
-		parts := strings.Fields(line)
-		if len(parts) < 2 {
-			continue
-		}
-		rule := FirewallRule{Action: "allow"}
-		if strings.Contains(line, "DENY") {
-			rule.Action = "deny"
-		} else if strings.Contains(line, "REJECT") {
-			rule.Action = "reject"
-		} else if strings.Contains(line, "LIMIT") {
-			rule.Action = "limit"
-		}
-		// Handle numbered output: [ N] PORT ACTION ...
-		portIdx := 0
-		if strings.HasPrefix(parts[0], "[") {
-			portIdx = 1
-			// If the number has a trailing bracket (e.g. "1]"), skip it too.
-			if portIdx < len(parts) && strings.HasSuffix(parts[portIdx], "]") {
-				portIdx++
-			}
-		}
-		// Find the port field — it should be before the action keyword.
-		for portIdx < len(parts) && !isPortField(parts[portIdx]) {
-			portIdx++
-		}
-		if portIdx < len(parts) {
-			portField := parts[portIdx]
-			rule.Port = portField
-			if sub := extractProtocol(portField); sub != "" {
-				rule.Protocol = sub
-			}
-			rules = append(rules, rule)
-		}
+	parsed := ufw.ParseRules(output)
+	rules := make([]FirewallRule, 0, len(parsed))
+	for _, r := range parsed {
+		rules = append(rules, FirewallRule{
+			Port:     r.Port,
+			Protocol: r.Protocol,
+			Action:   r.Action,
+			Comment:  r.Comment,
+		})
 	}
 	return rules
-}
-
-func isPortField(s string) bool {
-	if !strings.Contains(s, "/") {
-		return false
-	}
-	before, _, _ := strings.Cut(s, "/")
-	if before == "" {
-		return false
-	}
-	for _, c := range before {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func extractProtocol(s string) string {
-	before, after, found := strings.Cut(s, "/")
-	if !found || before == "" {
-		return ""
-	}
-	switch after {
-	case "tcp", "udp":
-		return after
-	default:
-		return ""
-	}
 }

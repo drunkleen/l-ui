@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,6 +27,7 @@ import (
 	"github.com/drunkleen/l-ui/internal/config"
 	"github.com/drunkleen/l-ui/internal/database"
 	"github.com/drunkleen/l-ui/internal/logger"
+	"github.com/drunkleen/l-ui/internal/ufw"
 	"github.com/drunkleen/l-ui/internal/util/common"
 	"github.com/drunkleen/l-ui/internal/util/sys"
 	"github.com/drunkleen/l-ui/xray"
@@ -124,13 +126,9 @@ type UfwRule struct {
 }
 
 type UfwStatus struct {
-	Enabled bool      `json:"enabled"`
-	Rules   []UfwRule `json:"rules"`
-}
-
-var ufwLookPath = exec.LookPath
-var ufwRunCommand = func(name string, args ...string) ([]byte, error) {
-	return exec.Command(name, args...).CombinedOutput()
+	Enabled   bool      `json:"enabled"`
+	Installed bool      `json:"installed"`
+	Rules     []UfwRule `json:"rules"`
 }
 
 // ServerService provides business logic for server monitoring and management.
@@ -877,30 +875,36 @@ func parseUfwStatus(output string) UfwStatus {
 }
 
 func (s *ServerService) runUfw(args ...string) (string, error) {
-	if runtime.GOOS != "linux" {
-		return "", common.NewError("ufw control is supported only on Linux")
-	}
-	if _, err := ufwLookPath("ufw"); err != nil {
+	if !ufw.IsInstalled() {
 		return "", common.NewError("ufw is not installed on this system")
 	}
-	out, err := ufwRunCommand("ufw", args...)
-	output := strings.TrimSpace(string(out))
+	_, err := s.ufwCommand(args...)
 	if err != nil {
+		return "", err
+	}
+	// Re-run to get output for callers that use it
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	out, cmdErr := ufw.CmdRunner.Run(ctx, "ufw", args...)
+	output := strings.TrimSpace(string(out))
+	if cmdErr != nil {
 		if output == "" {
-			output = err.Error()
+			output = cmdErr.Error()
 		}
 		return output, fmt.Errorf("%s", output)
 	}
 	return output, nil
 }
 
+// ufwCommand runs ufw with the given args and ignores output.
+func (s *ServerService) ufwCommand(args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return ufw.CmdRunner.Run(ctx, "ufw", args...)
+}
+
 func normalizeUfwProtocol(protocol string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(protocol)) {
-	case "tcp", "udp":
-		return strings.ToLower(strings.TrimSpace(protocol)), nil
-	default:
-		return "", common.NewError("protocol must be tcp or udp")
-	}
+	return ufw.SanitizeProtocol(protocol)
 }
 
 func ufwRulePortMatches(rule UfwRule, port int, protocol string) bool {
@@ -913,12 +917,38 @@ func ufwActionMatches(rule UfwRule, action string) bool {
 }
 
 func (s *ServerService) ListUfwRules() (*UfwStatus, error) {
-	out, err := s.runUfw("status", "numbered")
-	if err != nil {
-		return nil, err
+	installed := ufw.IsInstalled()
+	active := false
+	var rules []UfwRule
+
+	if installed {
+		if a, err := ufw.IsActive(); err == nil {
+			active = a
+		}
+		raw, _, err := ufw.GetRulesOutput()
+		if err == nil {
+			parsed := ufw.ParseRules(raw)
+			rules = make([]UfwRule, 0, len(parsed))
+			for i, r := range parsed {
+				rules = append(rules, UfwRule{
+					Number: r.Number,
+					To:     r.Port,
+					Action: strings.ToUpper(r.Action),
+					From:   "",
+					Raw:    raw,
+				})
+				if r.Number == 0 {
+					rules[i].Number = i + 1
+				}
+			}
+		}
 	}
-	status := parseUfwStatus(out)
-	return &status, nil
+
+	return &UfwStatus{
+		Enabled:   active,
+		Installed: installed,
+		Rules:     rules,
+	}, nil
 }
 
 func (s *ServerService) setUfwRule(action string, port int, protocol string) error {
@@ -926,21 +956,16 @@ func (s *ServerService) setUfwRule(action string, port int, protocol string) err
 	if action != "allow" && action != "deny" {
 		return common.NewError("action must be allow or deny")
 	}
-	if port <= 0 || port > 65535 {
-		return common.NewError("port must be 1-65535")
+	_, portErr := ufw.SanitizePort(port)
+	if portErr != nil {
+		return common.NewError(portErr.Error())
 	}
-	proto, err := normalizeUfwProtocol(protocol)
+	proto, err := ufw.SanitizeProtocol(protocol)
 	if err != nil {
-		return err
+		return common.NewError(err.Error())
 	}
-	status, err := s.ListUfwRules()
-	if err != nil {
-		return err
-	}
-	if !status.Enabled {
-		return common.NewError("ufw is inactive")
-	}
-	target := fmt.Sprintf("%d/%s", port, proto)
+
+	status, _ := s.ListUfwRules()
 	desiredPresent := false
 	for i := len(status.Rules) - 1; i >= 0; i-- {
 		rule := status.Rules[i]
@@ -951,15 +976,23 @@ func (s *ServerService) setUfwRule(action string, port int, protocol string) err
 			desiredPresent = true
 			continue
 		}
-		if _, delErr := s.runUfw("--force", "delete", strings.ToLower(strings.Fields(rule.Action)[0]), rule.To); delErr != nil {
+		_, delErr := s.runUfw("--force", "delete", strings.ToLower(strings.Fields(rule.Action)[0]), rule.To)
+		if delErr != nil {
 			return delErr
 		}
 	}
 	if desiredPresent {
 		return nil
 	}
-	_, err = s.runUfw(action, target)
-	return err
+
+	switch action {
+	case "allow":
+		return ufw.RunAllow(port, proto, "")
+	case "deny":
+		return ufw.RunDeny(port, proto, "")
+	default:
+		return common.NewError("action must be allow or deny")
+	}
 }
 
 func (s *ServerService) AllowUfwPort(port int, protocol string) error {

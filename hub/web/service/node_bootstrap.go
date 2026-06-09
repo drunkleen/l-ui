@@ -508,6 +508,8 @@ else
 fi
 chown root:root /etc/systemd/system/l-ui.service
 chmod 644 /etc/systemd/system/l-ui.service
+# Agent binary does not use cobra subcommands — strip 'run' arg.
+sed -i 's|ExecStart=/usr/local/l-ui/l-ui run|ExecStart=/usr/local/l-ui/l-ui|' /etc/systemd/system/l-ui.service
 `)
 
 	out, err = sshutil.RunSSHCommand(conn, req.SSHPassword, useSudo, serviceCmd)
