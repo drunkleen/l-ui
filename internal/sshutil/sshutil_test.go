@@ -154,8 +154,8 @@ func TestLocalServiceUnitForRelease_Debian(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if name != "l-ui.service.debian" {
-		t.Errorf("service name = %q, want 'l-ui.service.debian'", name)
+	if name != "l-ui-agent.service.debian" {
+		t.Errorf("service name = %q, want 'l-ui-agent.service.debian'", name)
 	}
 	if len(data) == 0 {
 		t.Fatal("expected non-empty service file data")
@@ -170,8 +170,8 @@ func TestLocalServiceUnitForRelease_Arch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if name != "l-ui.service.arch" {
-		t.Errorf("service name = %q, want 'l-ui.service.arch'", name)
+	if name != "l-ui-agent.service.arch" {
+		t.Errorf("service name = %q, want 'l-ui-agent.service.arch'", name)
 	}
 }
 
@@ -180,8 +180,8 @@ func TestLocalServiceUnitForRelease_RHEL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if name != "l-ui.service.rhel" {
-		t.Errorf("service name = %q, want 'l-ui.service.rhel'", name)
+	if name != "l-ui-agent.service.rhel" {
+		t.Errorf("service name = %q, want 'l-ui-agent.service.rhel'", name)
 	}
 }
 
@@ -190,7 +190,7 @@ func TestLocalServiceUnitForRelease_Unknown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error for unknown OS: %v", err)
 	}
-	if name != "l-ui.service.rhel" {
+	if name != "l-ui-agent.service.rhel" {
 		t.Errorf("unknown OS should default to rhel, got %q", name)
 	}
 }
@@ -200,7 +200,7 @@ func TestLocalServiceUnitForRelease_CaseInsensitive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if name != "l-ui.service.debian" {
+	if name != "l-ui-agent.service.debian" {
 		t.Errorf("'UBUNTU' should map to debian, got %q", name)
 	}
 }

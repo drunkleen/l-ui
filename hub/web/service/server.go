@@ -782,8 +782,8 @@ func (s *ServerService) CleanupNodeInstall() error {
 		_ = exec.Command("systemctl", args...).Run()
 	}
 	for _, p := range []string{
-		"/usr/local/l-ui.previous",
-		"/usr/local/l-ui",
+		"/usr/local/l-ui-hub.previous",
+		"/usr/local/l-ui-hub",
 		"/etc/l-ui/l-ui.db",
 		"/etc/default/l-ui",
 		"/etc/systemd/system/l-ui.service",
@@ -807,7 +807,7 @@ func (s *ServerService) RotateBootstrapToken(token string) error {
 		return err
 	}
 	return os.WriteFile("/etc/default/l-ui", []byte(fmt.Sprintf(`LUI_DB_FOLDER=/etc/l-ui
-LUI_MAIN_FOLDER=/usr/local/l-ui
+LUI_MAIN_FOLDER=/usr/local/l-ui-hub
 LUI_SERVICE=/etc/systemd/system
 LUI_BOOTSTRAP_API_TOKEN=%s
 LUI_WEB_PORT=%d
@@ -1022,8 +1022,8 @@ func (s *ServerService) ReinstallNodeBundle(file multipart.File) error {
 	if err := tmpFile.Close(); err != nil {
 		return err
 	}
-	_ = os.RemoveAll("/usr/local/l-ui.previous")
-	if err := os.Rename("/usr/local/l-ui", "/usr/local/l-ui.previous"); err != nil && !os.IsNotExist(err) {
+	_ = os.RemoveAll("/usr/local/l-ui-hub.previous")
+	if err := os.Rename("/usr/local/l-ui-hub", "/usr/local/l-ui-hub.previous"); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	_ = os.RemoveAll("/etc/l-ui/l-ui.db")
@@ -1294,7 +1294,7 @@ func (s *ServerService) GetLogs(count string, level string, syslog string) []str
 		cmd.Stdout = &out
 		err = cmd.Run()
 		if err != nil {
-			return []string{"Failed to run journalctl command! Make sure systemd is available and l-ui service is registered."}
+			return []string{"Failed to run journalctl command! Make sure systemd is available and l-ui-hub service is registered."}
 		}
 		lines = strings.Split(out.String(), "\n")
 	} else {

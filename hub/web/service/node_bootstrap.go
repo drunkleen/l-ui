@@ -276,20 +276,20 @@ func (s *NodeService) bootstrapCleanup(conn *ssh.Client, req NodeBootstrapReques
 	switch {
 	case stage >= 2:
 		cmd = `set -e
-systemctl stop l-ui || true
-rm -rf /usr/local/l-ui
+systemctl stop l-ui-agent || true
+rm -rf /usr/local/l-ui-agent
 rm -f /etc/l-ui/l-ui.db
 rm -f /tmp/l-ui-agent.tar.gz
-if [ -d /usr/local/l-ui.previous ]; then
-  mv /usr/local/l-ui.previous /usr/local/l-ui
+if [ -d /usr/local/l-ui-agent.previous ]; then
+  mv /usr/local/l-ui-agent.previous /usr/local/l-ui-agent
 fi
 systemctl daemon-reload
-systemctl enable --now l-ui || true
+systemctl enable --now l-ui-agent || true
 `
 	case stage >= 1:
 		cmd = `set -e
 rm -f /tmp/l-ui-agent.tar.gz
-rm -rf /usr/local/l-ui
+rm -rf /usr/local/l-ui-agent
 `
 	default:
 		cmd = `rm -f /tmp/l-ui-agent.tar.gz`
@@ -364,7 +364,7 @@ func (s *NodeService) bootstrapFlow(ctx context.Context, req NodeBootstrapReques
 		cmd  string
 	}{
 		{"detect-arch", "uname -m"},
-		{"prepare-dirs", "mkdir -p /usr/local/l-ui/bin /etc/l-ui /var/log/l-ui"},
+		{"prepare-dirs", "mkdir -p /usr/local/l-ui-agent/bin /etc/l-ui /var/log/l-ui"},
 	}
 
 	var arch string
@@ -450,9 +450,9 @@ func (s *NodeService) bootstrapFlow(ctx context.Context, req NodeBootstrapReques
 	extractCmd := `set -e
 mkdir -p /usr/local /etc/default /var/log/l-ui
 rm -f /etc/l-ui/l-ui.db
-if [ -d /usr/local/l-ui ]; then
-  rm -rf /usr/local/l-ui.previous
-  mv /usr/local/l-ui /usr/local/l-ui.previous
+if [ -d /usr/local/l-ui-agent ]; then
+  rm -rf /usr/local/l-ui-agent.previous
+  mv /usr/local/l-ui-agent /usr/local/l-ui-agent.previous
 fi
 tar -xzf /tmp/l-ui-agent.tar.gz -C /usr/local
 `
@@ -466,14 +466,14 @@ tar -xzf /tmp/l-ui-agent.tar.gz -C /usr/local
 
 	envCmd := fmt.Sprintf(`set -e
 mkdir -p /etc/default
-cat >/etc/default/l-ui <<'EOF'
+cat >/etc/default/l-ui-agent <<'EOF'
 LUI_DB_FOLDER=/etc/l-ui
-LUI_MAIN_FOLDER=/usr/local/l-ui
+LUI_MAIN_FOLDER=/usr/local/l-ui-agent
 LUI_SERVICE=/etc/systemd/system
 LUI_BOOTSTRAP_API_TOKEN=%s
 LUI_WEB_PORT=%d
 EOF`, node.ApiToken, req.AgentPort)
-	envCmd += "\nchmod 600 /etc/default/l-ui\n"
+	envCmd += "\nchmod 600 /etc/default/l-ui-agent\n"
 	out, err = sshutil.RunSSHCommand(conn, req.SSHPassword, useSudo, envCmd)
 	if err != nil {
 		addStep("write-env", false, out+"\n"+err.Error())
@@ -483,33 +483,31 @@ EOF`, node.ApiToken, req.AgentPort)
 
 	serviceCmd := fmt.Sprintf(`set -e
 release="$(. /etc/os-release >/dev/null 2>&1; echo "${ID:-}")"
-if [ -f /usr/local/l-ui/l-ui.service ]; then
-  cp -f /usr/local/l-ui/l-ui.service /etc/systemd/system/l-ui.service
-elif [ -f /usr/local/l-ui/l-ui.service.debian ]; then
+if [ -f /usr/local/l-ui-agent/l-ui-agent.service ]; then
+  cp -f /usr/local/l-ui-agent/l-ui-agent.service /etc/systemd/system/l-ui-agent.service
+elif [ -f /usr/local/l-ui-agent/l-ui-agent.service.debian ]; then
   case "$release" in
-    ubuntu|debian|armbian) cp -f /usr/local/l-ui/l-ui.service.debian /etc/systemd/system/l-ui.service ;;
-    arch|manjaro|parch) cp -f /usr/local/l-ui/l-ui.service.arch /etc/systemd/system/l-ui.service ;;
-    *) cp -f /usr/local/l-ui/l-ui.service.rhel /etc/systemd/system/l-ui.service ;;
+    ubuntu|debian|armbian) cp -f /usr/local/l-ui-agent/l-ui-agent.service.debian /etc/systemd/system/l-ui-agent.service ;;
+    arch|manjaro|parch) cp -f /usr/local/l-ui-agent/l-ui-agent.service.arch /etc/systemd/system/l-ui-agent.service ;;
+    *) cp -f /usr/local/l-ui-agent/l-ui-agent.service.rhel /etc/systemd/system/l-ui-agent.service ;;
   esac
-elif [ -f /usr/local/l-ui/l-ui.service.arch ]; then
+elif [ -f /usr/local/l-ui-agent/l-ui-agent.service.arch ]; then
   case "$release" in
-    arch|manjaro|parch) cp -f /usr/local/l-ui/l-ui.service.arch /etc/systemd/system/l-ui.service ;;
-    ubuntu|debian|armbian) cp -f /usr/local/l-ui/l-ui.service.debian /etc/systemd/system/l-ui.service ;;
-    *) cp -f /usr/local/l-ui/l-ui.service.rhel /etc/systemd/system/l-ui.service ;;
+    arch|manjaro|parch) cp -f /usr/local/l-ui-agent/l-ui-agent.service.arch /etc/systemd/system/l-ui-agent.service ;;
+    ubuntu|debian|armbian) cp -f /usr/local/l-ui-agent/l-ui-agent.service.debian /etc/systemd/system/l-ui-agent.service ;;
+    *) cp -f /usr/local/l-ui-agent/l-ui-agent.service.rhel /etc/systemd/system/l-ui-agent.service ;;
   esac
-elif [ -f /usr/local/l-ui/l-ui.service.rhel ]; then
+elif [ -f /usr/local/l-ui-agent/l-ui-agent.service.rhel ]; then
   case "$release" in
-    ubuntu|debian|armbian) cp -f /usr/local/l-ui/l-ui.service.debian /etc/systemd/system/l-ui.service ;;
-    arch|manjaro|parch) cp -f /usr/local/l-ui/l-ui.service.arch /etc/systemd/system/l-ui.service ;;
-    *) cp -f /usr/local/l-ui/l-ui.service.rhel /etc/systemd/system/l-ui.service ;;
+    ubuntu|debian|armbian) cp -f /usr/local/l-ui-agent/l-ui-agent.service.debian /etc/systemd/system/l-ui-agent.service ;;
+    arch|manjaro|parch) cp -f /usr/local/l-ui-agent/l-ui-agent.service.arch /etc/systemd/system/l-ui-agent.service ;;
+    *) cp -f /usr/local/l-ui-agent/l-ui-agent.service.rhel /etc/systemd/system/l-ui-agent.service ;;
   esac
 else
-  echo 'missing l-ui.service in bundle'; exit 1
+  echo 'missing l-ui-agent.service in bundle'; exit 1
 fi
-chown root:root /etc/systemd/system/l-ui.service
-chmod 644 /etc/systemd/system/l-ui.service
-# Agent binary does not use cobra subcommands — strip 'run' arg.
-sed -i 's|ExecStart=/usr/local/l-ui/l-ui run|ExecStart=/usr/local/l-ui/l-ui|' /etc/systemd/system/l-ui.service
+chown root:root /etc/systemd/system/l-ui-agent.service
+chmod 644 /etc/systemd/system/l-ui-agent.service
 `)
 
 	out, err = sshutil.RunSSHCommand(conn, req.SSHPassword, useSudo, serviceCmd)
@@ -532,10 +530,10 @@ sed -i 's|ExecStart=/usr/local/l-ui/l-ui run|ExecStart=/usr/local/l-ui/l-ui|' /e
 	}
 
 	binaryCheckCmd := `set -e
-if [ ! -f /usr/local/l-ui/l-ui ]; then
-  echo 'missing l-ui executable in bundle'; exit 1
+if [ ! -f /usr/local/l-ui-agent/l-ui-agent ]; then
+  echo 'missing l-ui-agent executable in bundle'; exit 1
 fi
-chmod 755 /usr/local/l-ui/l-ui
+chmod 755 /usr/local/l-ui-agent/l-ui-agent
 `
 	out, err = sshutil.RunSSHCommand(conn, req.SSHPassword, useSudo, binaryCheckCmd)
 	if err != nil {
@@ -549,8 +547,8 @@ chmod 755 /usr/local/l-ui/l-ui
 		cmd  string
 	}{
 		{"daemon-reload", "systemctl daemon-reload"},
-		{"enable-service", "systemctl enable l-ui"},
-		{"restart-service", `set -e; systemctl restart l-ui 2>&1; sleep 1; journalctl -u l-ui --no-pager -n 30 2>&1`},
+		{"enable-service", "systemctl enable l-ui-agent"},
+		{"restart-service", `set -e; systemctl restart l-ui-agent 2>&1; sleep 1; journalctl -u l-ui-agent --no-pager -n 30 2>&1`},
 	}
 	for _, st := range svcStartSteps {
 		out, err = sshutil.RunSSHCommand(conn, req.SSHPassword, useSudo, st.cmd)
@@ -558,7 +556,7 @@ chmod 755 /usr/local/l-ui/l-ui
 			addStep(st.name, false, out+"\n"+err.Error())
 			// Check what binary is at the path and try running it directly.
 			diagOut, _ := sshutil.RunSSHCommand(conn, req.SSHPassword, useSudo,
-				`ls -la /usr/local/l-ui/l-ui; echo "---"; file /usr/local/l-ui/l-ui 2>&1; echo "---run---"; timeout 3 /usr/local/l-ui/l-ui 2>&1 || true`)
+				`ls -la /usr/local/l-ui-agent/l-ui-agent; echo "---"; file /usr/local/l-ui-agent/l-ui-agent 2>&1; echo "---run---"; timeout 3 /usr/local/l-ui-agent/l-ui-agent 2>&1 || true`)
 			addStep("service-diag", false, diagOut)
 			if rbOut, rbErr := s.bootstrapCleanup(conn, req, useSudo, completed); rbErr == nil {
 				addStep("rollback", true, rbOut)
@@ -703,7 +701,7 @@ exit 1`, node.ApiToken, timestamp, nonce, signature, bodyDigest, req.AgentPort)
 		return &NodeBootstrapResult{Node: &node, Steps: steps}, err
 	}
 	addStep("verify-agent", true, out)
-	_, _ = sshutil.RunSSHCommand(conn, req.SSHPassword, useSudo, `rm -rf /usr/local/l-ui.previous`)
+	_, _ = sshutil.RunSSHCommand(conn, req.SSHPassword, useSudo, `rm -rf /usr/local/l-ui-agent.previous`)
 	node.BundleSHA256 = version
 
 	if err := s.persistBootstrapNode(&node); err != nil {

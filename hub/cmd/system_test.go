@@ -545,7 +545,7 @@ func TestCheckFail2banInstalled(t *testing.T) {
 }
 
 func TestGeoTargetDir(t *testing.T) {
-	if geoTargetDir != "/usr/local/l-ui" {
-		t.Errorf("geoTargetDir = %q, want /usr/local/l-ui", geoTargetDir)
+	if geoTargetDir != "/usr/local/l-ui-hub" {
+		t.Errorf("geoTargetDir = %q, want /usr/local/l-ui-hub", geoTargetDir)
 	}
 }

@@ -228,7 +228,7 @@ func resolveUpdateFolders() (string, string) {
 		}
 	}
 	if mainFolder == "" {
-		mainFolder = "/usr/local/l-ui"
+		mainFolder = "/usr/local/l-ui-hub"
 	}
 
 	serviceFolder := os.Getenv("LUI_SERVICE")

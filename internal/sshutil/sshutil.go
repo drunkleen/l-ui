@@ -184,9 +184,9 @@ func InstallServiceFallback(conn *ssh.Client, password string, useSudo bool) (st
 		return out, err
 	}
 	installCmd := fmt.Sprintf(`set -e
-cp -f %s /etc/systemd/system/l-ui.service
-chown root:root /etc/systemd/system/l-ui.service
-chmod 644 /etc/systemd/system/l-ui.service
+cp -f %s /etc/systemd/system/l-ui-agent.service
+chown root:root /etc/systemd/system/l-ui-agent.service
+chmod 644 /etc/systemd/system/l-ui-agent.service
 rm -f %s
 `, remoteTmp, remoteTmp)
 	copyOut, err := RunSSHCommand(conn, password, useSudo, installCmd)
@@ -205,17 +205,17 @@ func ShouldInstallServiceFallback(output string, err error) bool {
 		msg += "\n" + err.Error()
 	}
 	msg = strings.ToLower(strings.TrimSpace(msg))
-	return strings.Contains(msg, "missing l-ui.service in bundle")
+	return strings.Contains(msg, "missing l-ui-agent.service in bundle") || strings.Contains(msg, "missing l-ui.service in bundle")
 }
 
 func LocalServiceUnitForRelease(release string) ([]byte, string, error) {
 	release = strings.ToLower(strings.TrimSpace(release))
-	servicePath := "l-ui.service.rhel"
+	servicePath := "l-ui-agent.service.rhel"
 	switch release {
 	case "ubuntu", "debian", "armbian":
-		servicePath = "l-ui.service.debian"
+		servicePath = "l-ui-agent.service.debian"
 	case "arch", "manjaro", "parch":
-		servicePath = "l-ui.service.arch"
+		servicePath = "l-ui-agent.service.arch"
 	}
 	repoRoot, err := FindRepoRoot()
 	if err != nil {

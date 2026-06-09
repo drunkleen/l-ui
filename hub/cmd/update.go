@@ -52,7 +52,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// Backup
 	destDir := config.GetBinFolderPath()
 	if destDir == "" {
-		destDir = "/usr/local/l-ui"
+		destDir = "/usr/local/l-ui-hub"
 	}
 	backupDir := ""
 	if _, err := os.Stat(destDir); err == nil {

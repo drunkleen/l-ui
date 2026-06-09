@@ -1,6 +1,6 @@
 #!/bin/bash
 # Thin wrapper — delegates everything to the Go binary.
-LUI_BIN="${LUI_MAIN_FOLDER:-/usr/local/l-ui}/l-ui"
+LUI_BIN="${LUI_MAIN_FOLDER:-/usr/local/l-ui-hub}/l-ui"
 if [[ -x "$LUI_BIN" ]] && [[ "$LUI_SKIP_BINARY" != "true" ]]; then
     exec "$LUI_BIN" "$@"
 fi

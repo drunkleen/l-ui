@@ -209,7 +209,7 @@ func tuiInstall() error {
 func EnsureInstallFromTarball(tarballPath string) error {
 	destDir := config.GetBinFolderPath()
 	if destDir == "" {
-		destDir = "/usr/local/l-ui"
+		destDir = "/usr/local/l-ui-hub"
 	}
 	// Create destination if needed
 	if err := os.MkdirAll(destDir, 0755); err != nil {

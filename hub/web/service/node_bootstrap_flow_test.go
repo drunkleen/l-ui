@@ -13,16 +13,16 @@ import (
 // ── Env file format test ────────────────────────────────────────────
 
 func TestBootstrapEnvFileFormat(t *testing.T) {
-	// The bootstrap writes this env file to /etc/default/l-ui on the node.
+	// The bootstrap writes this env file to /etc/default/l-ui-agent on the node.
 	// It must contain all vars the agent needs to start.
 	apiToken := "test-api-token-123"
 	agentPort := 2054
 
 	envCmd := fmt.Sprintf(`set -e
 mkdir -p /etc/default
-cat >/etc/default/l-ui <<'EOF'
+cat >/etc/default/l-ui-agent <<'EOF'
 LUI_DB_FOLDER=/etc/l-ui
-LUI_MAIN_FOLDER=/usr/local/l-ui
+LUI_MAIN_FOLDER=/usr/local/l-ui-agent
 LUI_SERVICE=/etc/systemd/system
 LUI_BOOTSTRAP_API_TOKEN=%s
 LUI_WEB_PORT=%d
@@ -32,7 +32,7 @@ EOF`, apiToken, agentPort)
 	if !strings.Contains(envCmd, "LUI_DB_FOLDER=/etc/l-ui") {
 		t.Error("env missing LUI_DB_FOLDER")
 	}
-	if !strings.Contains(envCmd, "LUI_MAIN_FOLDER=/usr/local/l-ui") {
+	if !strings.Contains(envCmd, "LUI_MAIN_FOLDER=/usr/local/l-ui-agent") {
 		t.Error("env missing LUI_MAIN_FOLDER")
 	}
 	if !strings.Contains(envCmd, "LUI_SERVICE=/etc/systemd/system") {
@@ -50,40 +50,40 @@ EOF`, apiToken, agentPort)
 
 func TestBootstrapServiceFileSelection(t *testing.T) {
 	// Simulate the serviceCmd logic from bootstrapFlow:
-	// It should pick l-ui.service.debian for Ubuntu/Debian.
+	// It should pick l-ui-agent.service.debian for Ubuntu/Debian.
 	release := "ubuntu"
-	selectedService := "l-ui.service"
+	selectedService := "l-ui-agent.service"
 	dir := t.TempDir()
 
 	// Create mock service files
-	os.WriteFile(dir+"/l-ui.service", []byte("generic"), 0644)
-	os.WriteFile(dir+"/l-ui.service.debian", []byte("debian"), 0644)
+	os.WriteFile(dir+"/l-ui-agent.service", []byte("generic"), 0644)
+	os.WriteFile(dir+"/l-ui-agent.service.debian", []byte("debian"), 0644)
 
-	// Logic from bootstrapFlow: prefer l-ui.service if exists
-	if _, err := os.Stat(dir + "/l-ui.service"); err == nil {
-		selectedService = "l-ui.service"
-	} else if _, err := os.Stat(dir + "/l-ui.service.debian"); err == nil {
+	// Logic from bootstrapFlow: prefer l-ui-agent.service if exists
+	if _, err := os.Stat(dir + "/l-ui-agent.service"); err == nil {
+		selectedService = "l-ui-agent.service"
+	} else if _, err := os.Stat(dir + "/l-ui-agent.service.debian"); err == nil {
 		// The actual code also checks the release ID and picks the right variant.
 		switch release {
 		case "ubuntu", "debian", "armbian":
-			selectedService = "l-ui.service.debian"
+			selectedService = "l-ui-agent.service.debian"
 		}
 	}
 
-	if selectedService != "l-ui.service" {
-		t.Fatalf("expected l-ui.service (generic exists), got %s", selectedService)
+	if selectedService != "l-ui-agent.service" {
+		t.Fatalf("expected l-ui-agent.service (generic exists), got %s", selectedService)
 	}
 
 	// Now test without the generic service file — should use debian variant
-	os.Remove(dir + "/l-ui.service")
-	if _, err := os.Stat(dir + "/l-ui.service"); os.IsNotExist(err) {
-		if _, err := os.Stat(dir + "/l-ui.service.debian"); err == nil {
-			selectedService = "l-ui.service.debian"
+	os.Remove(dir + "/l-ui-agent.service")
+	if _, err := os.Stat(dir + "/l-ui-agent.service"); os.IsNotExist(err) {
+		if _, err := os.Stat(dir + "/l-ui-agent.service.debian"); err == nil {
+			selectedService = "l-ui-agent.service.debian"
 		}
 	}
 
-	if selectedService != "l-ui.service.debian" {
-		t.Fatalf("expected l-ui.service.debian, got %s", selectedService)
+	if selectedService != "l-ui-agent.service.debian" {
+		t.Fatalf("expected l-ui-agent.service.debian, got %s", selectedService)
 	}
 }
 
@@ -380,28 +380,28 @@ func TestBootstrapRollbackScript(t *testing.T) {
 	// The rollback script must clean up tarball, extracted files, and service.
 	script := `set -e
 rm -f /tmp/l-ui-agent.tar.gz
-rm -rf /usr/local/l-ui
+rm -rf /usr/local/l-ui-agent
 rm -f /etc/l-ui/l-ui.db
-if [ -d /usr/local/l-ui.previous ]; then
-  mv /usr/local/l-ui.previous /usr/local/l-ui
+if [ -d /usr/local/l-ui-agent.previous ]; then
+  mv /usr/local/l-ui-agent.previous /usr/local/l-ui-agent
 fi
 systemctl daemon-reload
-systemctl enable --now l-ui || true
+systemctl enable --now l-ui-agent || true
 `
 
 	if !strings.Contains(script, "rm -f /tmp/l-ui-agent.tar.gz") {
 		t.Error("rollback must remove agent tarball")
 	}
-	if !strings.Contains(script, "rm -rf /usr/local/l-ui") {
+	if !strings.Contains(script, "rm -rf /usr/local/l-ui-agent") {
 		t.Error("rollback must remove extracted l-ui dir")
 	}
 	if !strings.Contains(script, "rm -f /etc/l-ui/l-ui.db") {
 		t.Error("rollback must remove DB")
 	}
-	if !strings.Contains(script, "mv /usr/local/l-ui.previous /usr/local/l-ui") {
+	if !strings.Contains(script, "mv /usr/local/l-ui-agent.previous /usr/local/l-ui-agent") {
 		t.Error("rollback must restore previous installation")
 	}
-	if !strings.Contains(script, "systemctl enable --now l-ui") {
+	if !strings.Contains(script, "systemctl enable --now l-ui-agent") {
 		t.Error("rollback must restart previous installation")
 	}
 }
@@ -410,12 +410,12 @@ func TestBootstrapLightRollbackScript(t *testing.T) {
 	// A lighter rollback — only cleanup tarball and extracted files, no service ops.
 	script := `set -e
 rm -f /tmp/l-ui-agent.tar.gz
-rm -rf /usr/local/l-ui
+rm -rf /usr/local/l-ui-agent
 `
 	if !strings.Contains(script, "rm -f /tmp/l-ui-agent.tar.gz") {
 		t.Error("light rollback must remove agent tarball")
 	}
-	if !strings.Contains(script, "rm -rf /usr/local/l-ui") {
+	if !strings.Contains(script, "rm -rf /usr/local/l-ui-agent") {
 		t.Error("light rollback must remove extracted l-ui dir")
 	}
 	if strings.Contains(script, "systemctl") {

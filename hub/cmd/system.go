@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var geoTargetDir = "/usr/local/l-ui"
+var geoTargetDir = "/usr/local/l-ui-hub"
 
 // --- Geo ---
 

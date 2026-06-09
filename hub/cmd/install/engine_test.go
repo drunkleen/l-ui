@@ -64,12 +64,12 @@ func writeBinary(t *testing.T, dir, name string) {
 func TestExtractTarball(t *testing.T) {
 	tmp := t.TempDir()
 	tarball := makeTarball(t, tmp, map[string]string{
-		"l-ui/l-ui":         "binary-content",
-		"l-ui/l-ui.service": "[Unit]\nDescription=l-ui",
+		"l-ui-hub/l-ui":         "binary-content",
+		"l-ui-hub/l-ui.service": "[Unit]\nDescription=l-ui",
 	})
 	e := &Engine{
 		cfg:     InstallConfig{Tarball: tarball, Port: "2053"},
-		destDir: filepath.Join(tmp, "dest", "l-ui"),
+		destDir: filepath.Join(tmp, "dest", "l-ui-hub"),
 	}
 	if err := e.extractTarball(); err != nil {
 		t.Fatalf("extractTarball: %v", err)
@@ -90,11 +90,11 @@ func TestExtractTarballMissingBinary(t *testing.T) {
 	tmp := t.TempDir()
 	// Tarball without the binary
 	tarball := makeTarball(t, tmp, map[string]string{
-		"l-ui/l-ui.service": "[Unit]",
+		"l-ui-hub/l-ui.service": "[Unit]",
 	})
 	e := &Engine{
 		cfg:     InstallConfig{Tarball: tarball},
-		destDir: filepath.Join(tmp, "dest", "l-ui"),
+		destDir: filepath.Join(tmp, "dest", "l-ui-hub"),
 	}
 	if err := e.extractTarball(); err == nil {
 		t.Fatal("expected error for missing binary")
@@ -241,7 +241,7 @@ func TestResult(t *testing.T) {
 			Username: "admin",
 			Password: "secret",
 		},
-		destDir: "/usr/local/l-ui",
+		destDir: "/usr/local/l-ui-hub",
 	}
 	r := e.result()
 	if r == nil {
@@ -253,8 +253,8 @@ func TestResult(t *testing.T) {
 	if r.Password != "secret" {
 		t.Errorf("password = %q, want 'secret'", r.Password)
 	}
-	if r.ConfigDir != "/usr/local/l-ui" {
-		t.Errorf("config dir = %q, want '/usr/local/l-ui'", r.ConfigDir)
+	if r.ConfigDir != "/usr/local/l-ui-hub" {
+		t.Errorf("config dir = %q, want '/usr/local/l-ui-hub'", r.ConfigDir)
 	}
 }
 

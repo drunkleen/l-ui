@@ -266,11 +266,11 @@ func CachedBundleHasServiceFile(bundlePath string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if !strings.HasPrefix(hdr.Name, "l-ui/") {
+		if !strings.HasPrefix(hdr.Name, "l-ui-agent/") {
 			continue
 		}
 		switch filepath.Base(hdr.Name) {
-		case "l-ui.service", "l-ui.service.debian", "l-ui.service.arch", "l-ui.service.rhel":
+		case "l-ui-agent.service", "l-ui-agent.service.debian", "l-ui-agent.service.arch", "l-ui-agent.service.rhel":
 			return true, nil
 		}
 	}
@@ -296,7 +296,7 @@ func CachedBundleHasExecutable(bundlePath string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if hdr.Name == "l-ui/l-ui" {
+		if hdr.Name == "l-ui-agent/l-ui-agent" {
 			return true, nil
 		}
 	}

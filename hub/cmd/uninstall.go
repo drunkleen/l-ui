@@ -48,7 +48,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 
 	// Remove binary and config
 	dirs := []string{
-		"/usr/local/l-ui",
+		"/usr/local/l-ui-hub",
 		"/etc/systemd/system/l-ui.service",
 	}
 	for _, d := range dirs {

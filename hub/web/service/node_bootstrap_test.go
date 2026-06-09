@@ -165,7 +165,7 @@ func TestBootstrapTLSDirectiveErrorsForUnknownProvider(t *testing.T) {
 }
 
 func TestShouldInstallServiceFallback(t *testing.T) {
-	if !sshutil.ShouldInstallServiceFallback("missing l-ui.service in bundle", errors.New("exit status 1")) {
+	if !sshutil.ShouldInstallServiceFallback("missing l-ui-agent.service in bundle", errors.New("exit status 1")) {
 		t.Fatal("expected fallback for missing bundle service")
 	}
 	if sshutil.ShouldInstallServiceFallback("permission denied", errors.New("exit status 1")) {

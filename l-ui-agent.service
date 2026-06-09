@@ -1,17 +1,16 @@
 [Unit]
-Description=L-UI Hub Service
+Description=L-UI Agent Service
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/l-ui-hub/l-ui run
-ExecReload=/bin/kill -USR1 $MAINPID
+ExecStart=/usr/local/l-ui-agent/l-ui-agent
 EnvironmentFile=-/etc/default/l-ui
 Restart=on-failure
 RestartSec=5s
 
 # Hardening
-ProtectSystem=strict
+ProtectSystem=full
 ProtectHome=true
 PrivateTmp=true
 NoNewPrivileges=true

@@ -1,0 +1,15 @@
+[Unit]
+Description=l-ui Agent Service
+After=network.target
+Wants=network.target
+
+[Service]
+EnvironmentFile=-/etc/default/l-ui
+Type=simple
+WorkingDirectory=/usr/local/l-ui-agent/
+ExecStart=/usr/local/l-ui-agent/l-ui-agent
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

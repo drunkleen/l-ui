@@ -95,9 +95,9 @@ func TestBuildNodeBundleDownloadsAndCachesRelease(t *testing.T) {
 			t.Fatalf("read tar: %v", err)
 		}
 		switch hdr.Name {
-		case "l-ui/l-ui":
+		case "l-ui-agent/l-ui-agent":
 			foundNode = true
-		case filepath.ToSlash(filepath.Join("l-ui", "bin", "xray-linux-"+goruntime.GOARCH)):
+		case filepath.ToSlash(filepath.Join("l-ui-agent", "bin", "xray-linux-"+goruntime.GOARCH)):
 			foundXray = true
 		}
 	}
@@ -312,15 +312,15 @@ func makeReleaseBundleArchive(t *testing.T, arch string) []byte {
 			t.Fatalf("write data %s: %v", name, err)
 		}
 	}
-	serviceDebian := mustReadTestFile(t, filepath.Join("l-ui.service.debian"))
-	serviceArch := mustReadTestFile(t, filepath.Join("l-ui.service.arch"))
-	serviceRhel := mustReadTestFile(t, filepath.Join("l-ui.service.rhel"))
-	write("l-ui/l-ui", []byte("node-binary"), 0755)
-	write("l-ui/l-ui.service", serviceDebian, 0644)
-	write("l-ui/l-ui.service.debian", serviceDebian, 0644)
-	write("l-ui/l-ui.service.arch", serviceArch, 0644)
-	write("l-ui/l-ui.service.rhel", serviceRhel, 0644)
-	write(filepath.ToSlash(filepath.Join("l-ui", "bin", "xray-linux-"+arch)), []byte("xray-binary"), 0755)
+	serviceDebian := mustReadTestFile(t, filepath.Join("l-ui-agent.service.debian"))
+	serviceArch := mustReadTestFile(t, filepath.Join("l-ui-agent.service.arch"))
+	serviceRhel := mustReadTestFile(t, filepath.Join("l-ui-agent.service.rhel"))
+	write("l-ui-agent/l-ui-agent", []byte("node-binary"), 0755)
+	write("l-ui-agent/l-ui-agent.service", serviceDebian, 0644)
+	write("l-ui-agent/l-ui-agent.service.debian", serviceDebian, 0644)
+	write("l-ui-agent/l-ui-agent.service.arch", serviceArch, 0644)
+	write("l-ui-agent/l-ui-agent.service.rhel", serviceRhel, 0644)
+	write(filepath.ToSlash(filepath.Join("l-ui-agent", "bin", "xray-linux-"+arch)), []byte("xray-binary"), 0755)
 	if err := tw.Close(); err != nil {
 		t.Fatalf("close tar: %v", err)
 	}

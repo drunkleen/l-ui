@@ -115,28 +115,28 @@ jobs:
           wget -q -O geosite_IR.dat https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat
           wget -q -O geoip_RU.dat https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat
           wget -q -O geosite_RU.dat https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat
-          # Agent tarball (extracts as l-ui/ on the node).
-          mkdir -p _agent/l-ui/bin
-          cp lui-agent-release _agent/l-ui/l-ui
-          cp l-ui.service* _agent/l-ui/
-          cp "$XRAY_NAME" *.dat _agent/l-ui/bin/
-          cd _agent && tar -zcf "../l-ui-agent-linux-${{ matrix.platform }}.tar.gz" l-ui && cd ..
-          # Hub tarball (extracts as l-ui/ on the server).
-          mkdir -p _hub/l-ui/bin
-          cp lui-hub-release _hub/l-ui/l-ui-hub
-          ln -s l-ui-hub _hub/l-ui/l-ui
-          cp l-ui.service* _hub/l-ui/
-          cp l-ui.sh _hub/l-ui/
-          cp "$XRAY_NAME" *.dat _hub/l-ui/bin/
-          cd _hub && tar -zcf "../l-ui-hub-linux-${{ matrix.platform }}.tar.gz" l-ui && cd ..
+          # Agent tarball (extracts as l-ui-agent/ on the node).
+          mkdir -p _agent/l-ui-agent/bin
+          cp lui-agent-release _agent/l-ui-agent/l-ui-agent
+          cp l-ui-agent.service* _agent/l-ui-agent/
+          cp "$XRAY_NAME" *.dat _agent/l-ui-agent/bin/
+          cd _agent && tar -zcf "../l-ui-agent-linux-${{ matrix.platform }}.tar.gz" l-ui-agent && cd ..
+          # Hub tarball (extracts as l-ui-hub/ on the server).
+          mkdir -p _hub/l-ui-hub/bin
+          cp lui-hub-release _hub/l-ui-hub/l-ui-hub
+          ln -s l-ui-hub _hub/l-ui-hub/l-ui
+          cp l-ui.service* _hub/l-ui-hub/
+          cp l-ui.sh _hub/l-ui-hub/
+          cp "$XRAY_NAME" *.dat _hub/l-ui-hub/bin/
+          cd _hub && tar -zcf "../l-ui-hub-linux-${{ matrix.platform }}.tar.gz" l-ui-hub && cd ..
       - name: Verify hub tarball
         run: |
-          for f in l-ui/l-ui-hub l-ui/l-ui l-ui/l-ui.service l-ui/bin/xray-linux-${{ matrix.platform }}; do
+          for f in l-ui-hub/l-ui-hub l-ui-hub/l-ui l-ui-hub/l-ui.service l-ui-hub/bin/xray-linux-${{ matrix.platform }}; do
             tar -tzf l-ui-hub-linux-${{ matrix.platform }}.tar.gz | grep -Fxq "$f" || { echo "missing $f"; exit 1; }
           done
       - name: Verify agent tarball
         run: |
-          for f in l-ui/l-ui l-ui/l-ui.service l-ui/bin/xray-linux-${{ matrix.platform }}; do
+          for f in l-ui-agent/l-ui-agent l-ui-agent/l-ui-agent.service l-ui-agent/bin/xray-linux-${{ matrix.platform }}; do
             tar -tzf l-ui-agent-linux-${{ matrix.platform }}.tar.gz | grep -Fxq "$f" || { echo "missing $f"; exit 1; }
           done
       - name: Upload hub artifact
@@ -166,8 +166,8 @@ jobs:
       - name: Extract and verify hub binary
         run: |
           tar -xzf l-ui-hub-linux-${{ matrix.platform }}.tar.gz
-          chmod +x l-ui/l-ui-hub
-          ./l-ui/l-ui-hub -v
+          chmod +x l-ui-hub/l-ui-hub
+          ./l-ui-hub/l-ui-hub -v
 
   # docker:
   #   needs: build
@@ -202,7 +202,7 @@ jobs:
   #           echo "extracting $arch -> $dst"
   #           tmpd="$(mktemp -d)"
   #           tar -xzf "$tar" -C "$tmpd"
-  #           cp "$tmpd/l-ui/l-ui-hub" "$dst"
+  #           cp "$tmpd/l-ui-hub/l-ui-hub" "$dst"
   #           rm -rf "$tmpd"
   #           ls -lh "$dst"
   #         done

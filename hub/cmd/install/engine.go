@@ -53,7 +53,7 @@ type ProgressFunc func(string)
 
 // NewEngine creates an install engine from config.
 func NewEngine(cfg InstallConfig, progress ...ProgressFunc) *Engine {
-	dest := "/usr/local/l-ui"
+	dest := "/usr/local/l-ui-hub"
 	logFile := filepath.Join(os.TempDir(), fmt.Sprintf("l-ui-install-%d.log", time.Now().Unix()))
 	f, err := os.Create(logFile)
 	l := log.New(os.Stderr, "", 0)
@@ -240,8 +240,8 @@ func (e *Engine) installServiceFile() error {
 	}
 	// Patch ExecStart to include 'run' subcommand if missing
 	content := string(data)
-	if !bytes.Contains(data, []byte("/usr/local/l-ui/l-ui run")) {
-		content = strings.ReplaceAll(content, "ExecStart=/usr/local/l-ui/l-ui", "ExecStart=/usr/local/l-ui/l-ui run")
+	if !bytes.Contains(data, []byte("/usr/local/l-ui-hub/l-ui run")) {
+		content = strings.ReplaceAll(content, "ExecStart=/usr/local/l-ui-hub/l-ui", "ExecStart=/usr/local/l-ui-hub/l-ui run")
 	}
 	if err := os.WriteFile(svcDst, []byte(content), 0644); err != nil {
 		return fmt.Errorf("write service file: %w", err)
