@@ -832,6 +832,30 @@ func (s *NodeService) PushNodeConfig(id int, hubNodeID, hubEndpoint string, xray
 	return configVersion, nil
 }
 
+func (s *NodeService) ApplyNodeConfig(id int, xrayConfig json.RawMessage) error {
+	n, err := s.GetById(id)
+	if err != nil || n == nil {
+		return nodeNotFoundErr()
+	}
+	if !n.Enable {
+		return nodeDisabledErr()
+	}
+	mgr := runtime.GetManager()
+	if mgr == nil {
+		return nodeServiceErr("runtime manager unavailable")
+	}
+	remote, err := mgr.RemoteFor(n)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := remote.ApplyNodeConfig(ctx, xrayConfig); err != nil {
+		return nodeServiceErr(err.Error())
+	}
+	return nil
+}
+
 func (s *NodeService) GetNodeConfigVersion(id int) (int, error) {
 	n, err := s.GetById(id)
 	if err != nil || n == nil {

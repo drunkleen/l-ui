@@ -57,6 +57,7 @@ func (s *AgentServer) initRouter() *fiber.App {
 	fw := &controller.FirewallController{}
 	logs := &controller.LogsController{}
 	restart := &controller.RestartController{}
+	xrayCtrl := controller.NewXrayController()
 	cert := controller.NewCertController(s.certDir)
 
 	api.Get("/status", status.GetStatus)
@@ -74,6 +75,10 @@ func (s *AgentServer) initRouter() *fiber.App {
 	api.Get("/logs", logs.TailLog)
 	api.Post("/restart", restart.RestartAgent)
 	api.Post("/xray/restart", restart.RestartXray)
+	api.Get("/xray/version", xrayCtrl.GetVersion)
+	api.Get("/xray/status", xrayCtrl.GetStatus)
+	api.Post("/xray/install", xrayCtrl.Install)
+	api.Post("/config/apply", xrayCtrl.ApplyConfig)
 
 	api.Post("/certs", cert.Push)
 	api.Get("/certs/status", cert.Status)

@@ -532,9 +532,31 @@ func (r *Remote) ReinstallBundle(ctx context.Context, bundlePath string) error {
 	return err
 }
 
-func (r *Remote) InstallXray(ctx context.Context, version string) error {
-	_, err := r.do(ctx, http.MethodPost, "api/v1/server/installXray/"+url.PathEscape(version), nil)
+func (r *Remote) ApplyNodeConfig(ctx context.Context, xrayConfig json.RawMessage) error {
+	_, err := r.do(ctx, http.MethodPost, "api/v1/config/apply",
+		map[string]any{"xray_config": xrayConfig})
 	return err
+}
+
+func (r *Remote) InstallXray(ctx context.Context, version string) error {
+	_, err := r.do(ctx, http.MethodPost, "api/v1/xray/install",
+		map[string]string{"version": version})
+	return err
+}
+
+func (r *Remote) GetXrayStatus(ctx context.Context) (running bool, version string, err error) {
+	env, err := r.doWithRetry(ctx, http.MethodGet, "api/v1/xray/status", nil)
+	if err != nil {
+		return false, "", err
+	}
+	var result struct {
+		Running bool   `json:"running"`
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(env.Obj, &result); err != nil {
+		return false, "", fmt.Errorf("decode xray status: %w", err)
+	}
+	return result.Running, result.Version, nil
 }
 
 func (r *Remote) doRaw(ctx context.Context, method, path string, bodyBytes []byte, body io.Reader, contentType string) (*envelope, error) {
