@@ -1883,8 +1883,88 @@ func (s *ServerService) UpdateGeofile(fileName string) error {
 	return nil
 }
 
+func (s *ServerService) installXrayFromZip(zipPath string) error {
+	zipFile, err := os.Open(zipPath)
+	if err != nil {
+		return err
+	}
+	defer zipFile.Close()
+	stat, err := zipFile.Stat()
+	if err != nil {
+		return err
+	}
+	reader, err := zip.NewReader(zipFile, stat.Size())
+	if err != nil {
+		return err
+	}
+	copyZipFile := func(zipName string, fileName string) error {
+		zf, err := reader.Open(zipName)
+		if err != nil {
+			return err
+		}
+		defer zf.Close()
+		if err := os.MkdirAll(filepath.Dir(fileName), 0755); err != nil {
+			return err
+		}
+		tmpFile, err := os.CreateTemp(filepath.Dir(fileName), ".xray-*")
+		if err != nil {
+			return err
+		}
+		tmpPath := tmpFile.Name()
+		ok := false
+		defer func() {
+			_ = tmpFile.Close()
+			if !ok {
+				_ = os.Remove(tmpPath)
+			}
+		}()
+		_, err = io.Copy(tmpFile, zf)
+		if err != nil {
+			return err
+		}
+		if err := tmpFile.Chmod(0755); err != nil {
+			return err
+		}
+		if err := tmpFile.Close(); err != nil {
+			return err
+		}
+		if runtime.GOOS == "windows" {
+			_ = os.Remove(fileName)
+		}
+		if err := os.Rename(tmpPath, fileName); err != nil {
+			return err
+		}
+		ok = true
+		return nil
+	}
+	binaryName := "xray"
+	if runtime.GOOS == "windows" {
+		binaryName = "xray.exe"
+	}
+	return copyZipFile(binaryName, xray.GetBinaryPath())
+}
+
+func (s *ServerService) ensureXrayBinary() error {
+	binaryPath := xray.GetBinaryPath()
+	if _, err := os.Stat(binaryPath); err == nil {
+		return nil
+	}
+	zipPath, err := s.downloadXRay(s.getLatestXrayVersion())
+	if err != nil {
+		return fmt.Errorf("download xray: %w", err)
+	}
+	defer os.Remove(zipPath)
+	return s.installXrayFromZip(zipPath)
+}
+
+func (s *ServerService) getLatestXrayVersion() string {
+	return "v26.4.25"
+}
+
 func (s *ServerService) GetNewX25519Cert() (any, error) {
-	// Run the command
+	if err := s.ensureXrayBinary(); err != nil {
+		return nil, err
+	}
 	cmd := exec.Command(xray.GetBinaryPath(), "x25519")
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -1910,7 +1990,9 @@ func (s *ServerService) GetNewX25519Cert() (any, error) {
 }
 
 func (s *ServerService) GetNewmldsa65() (any, error) {
-	// Run the command
+	if err := s.ensureXrayBinary(); err != nil {
+		return nil, err
+	}
 	cmd := exec.Command(xray.GetBinaryPath(), "mldsa65")
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -1936,7 +2018,9 @@ func (s *ServerService) GetNewmldsa65() (any, error) {
 }
 
 func (s *ServerService) GetNewEchCert(sni string) (any, error) {
-	// Run the command
+	if err := s.ensureXrayBinary(); err != nil {
+		return nil, err
+	}
 	cmd := exec.Command(xray.GetBinaryPath(), "tls", "ech", "--serverName", sni)
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -1960,6 +2044,9 @@ func (s *ServerService) GetNewEchCert(sni string) (any, error) {
 }
 
 func (s *ServerService) GetNewVlessEnc() (any, error) {
+	if err := s.ensureXrayBinary(); err != nil {
+		return nil, err
+	}
 	cmd := exec.Command(xray.GetBinaryPath(), "vlessenc")
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -2031,7 +2118,9 @@ func (s *ServerService) GetNewUUID() (map[string]string, error) {
 }
 
 func (s *ServerService) GetNewmlkem768() (any, error) {
-	// Run the command
+	if err := s.ensureXrayBinary(); err != nil {
+		return nil, err
+	}
 	cmd := exec.Command(xray.GetBinaryPath(), "mlkem768")
 	var out bytes.Buffer
 	cmd.Stdout = &out

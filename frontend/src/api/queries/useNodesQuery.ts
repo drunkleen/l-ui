@@ -32,7 +32,7 @@ export function useNodesQuery(options?: { enabled?: boolean; refetchIntervalMs?:
     queryKey: keys.nodes.list(),
     queryFn: fetchNodes,
     enabled: options?.enabled ?? true,
-    refetchInterval: options?.refetchIntervalMs ?? false,
+    refetchInterval: options?.refetchIntervalMs ?? 10_000,
   });
 
   const nodes = useMemo(() => query.data ?? [], [query.data]);

@@ -61,6 +61,12 @@ var nodeHTTPClient = &http.Client{
 	},
 }
 
+var (
+	nodeSkipClient *http.Client
+	nodePinMu      sync.RWMutex
+	nodePinClients = map[string]*http.Client{}
+)
+
 // nodeHTTPClientFor returns the HTTP client used to reach a node, honoring its
 // per-node TLS verification mode. "verify" (or any http node) uses the shared
 // client with default certificate validation. "skip" disables validation.
@@ -74,24 +80,48 @@ func nodeHTTPClientFor(n *model.Node) (*http.Client, error) {
 	if mode == "verify" || n.Scheme == "http" {
 		return nodeHTTPClient, nil
 	}
-	tlsCfg := &tls.Config{InsecureSkipVerify: true}
-	if mode == "pin" {
-		want, err := decodeCertPin(n.PinnedCertSha256)
-		if err != nil {
-			return nil, err
-		}
-		tlsCfg.VerifyConnection = func(cs tls.ConnectionState) error {
-			if len(cs.PeerCertificates) == 0 {
-				return common.NewError("node presented no certificate")
+	if mode == "skip" {
+		if nodeSkipClient == nil {
+			nodeSkipClient = &http.Client{
+				Transport: &http.Transport{
+					MaxIdleConns:        64,
+					MaxIdleConnsPerHost: 4,
+					IdleConnTimeout:     60 * time.Second,
+					DialContext:         netsafe.SSRFGuardedDialContext,
+					TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+				},
 			}
-			sum := sha256.Sum256(cs.PeerCertificates[0].Raw)
-			if subtle.ConstantTimeCompare(sum[:], want) != 1 {
-				return common.NewError("node certificate does not match pinned SHA-256")
-			}
-			return nil
 		}
+		return nodeSkipClient, nil
 	}
-	return &http.Client{
+	// pin mode — one client per pinned hash
+	pinKey := n.PinnedCertSha256
+	if pinKey == "" {
+		return nil, common.NewError("pin mode requires a pinned certificate SHA-256")
+	}
+	nodePinMu.RLock()
+	if c, ok := nodePinClients[pinKey]; ok {
+		nodePinMu.RUnlock()
+		return c, nil
+	}
+	nodePinMu.RUnlock()
+
+	want, err := decodeCertPin(pinKey)
+	if err != nil {
+		return nil, err
+	}
+	tlsCfg := &tls.Config{InsecureSkipVerify: true}
+	tlsCfg.VerifyConnection = func(cs tls.ConnectionState) error {
+		if len(cs.PeerCertificates) == 0 {
+			return common.NewError("node presented no certificate")
+		}
+		sum := sha256.Sum256(cs.PeerCertificates[0].Raw)
+		if subtle.ConstantTimeCompare(sum[:], want) != 1 {
+			return common.NewError("node certificate does not match pinned SHA-256")
+		}
+		return nil
+	}
+	c := &http.Client{
 		Transport: &http.Transport{
 			MaxIdleConns:        64,
 			MaxIdleConnsPerHost: 4,
@@ -99,7 +129,11 @@ func nodeHTTPClientFor(n *model.Node) (*http.Client, error) {
 			DialContext:         netsafe.SSRFGuardedDialContext,
 			TLSClientConfig:     tlsCfg,
 		},
-	}, nil
+	}
+	nodePinMu.Lock()
+	nodePinClients[pinKey] = c
+	nodePinMu.Unlock()
+	return c, nil
 }
 
 // decodeCertPin accepts a SHA-256 certificate hash as base64 (the format used

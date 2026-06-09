@@ -107,6 +107,73 @@ body.dark .ant-dropdown-menu-item-divider {
   background-color: #585b70 !important;
 }
 
+/* ── Compact modal forms (global — all modals) ───────────────────────── */
+
+.ant-modal .ant-modal-body {
+  padding: 16px 20px;
+}
+
+.ant-modal .ant-form-item {
+  margin-bottom: 8px;
+}
+
+.ant-modal .ant-form-item-label {
+  padding-bottom: 2px;
+}
+
+.ant-modal .ant-form-item-label > label {
+  font-size: 12px;
+  height: 20px;
+}
+
+.ant-modal .ant-form-item-explain-error {
+  font-size: 11px;
+  min-height: 14px;
+}
+
+.ant-modal .ant-input,
+.ant-modal .ant-input-number,
+.ant-modal .ant-select-selector {
+  font-size: 13px;
+}
+
+.ant-modal .ant-input-number {
+  width: 100%;
+}
+
+.ant-modal .ant-alert {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.ant-modal .ant-alert-message {
+  font-size: 12px;
+}
+
+.ant-modal .ant-table-wrapper .ant-table-thead > tr > th {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.ant-modal .ant-table-wrapper .ant-table-tbody > tr > td {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.ant-modal .ant-collapse-header {
+  padding: 4px 0 !important;
+}
+
+.ant-modal .ant-collapse-content-box {
+  padding: 0 !important;
+}
+
+@media (max-width: 576px) {
+  .ant-modal:has(.ant-form) .ant-modal-body {
+    padding: 12px;
+  }
+}
+
 .settings-page .header-row,
 .xray-page .header-row {
   display: flex;

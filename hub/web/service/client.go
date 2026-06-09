@@ -1527,20 +1527,20 @@ type ClientSlim struct {
 // fields treat 0 as "unset" on the lower bound and 0 (or negative) as
 // "unbounded" on the upper bound.
 type ClientPageParams struct {
-	Page     int    `form:"page"`
-	PageSize int    `form:"pageSize"`
-	Search   string `form:"search"`
-	Filter   string `form:"filter"`
-	Protocol string `form:"protocol"`
-	Inbound  string `form:"inbound"`
-	Sort     string `form:"sort"`
-	Order    string `form:"order"`
+	Page       int    `query:"page"`
+	PageSize   int    `query:"pageSize"`
+	Search     string `query:"search"`
+	Filter     string `query:"filter"`
+	Protocol   string `query:"protocol"`
+	Inbound    string `query:"inbound"`
+	Sort       string `query:"sort"`
+	Order      string `query:"order"`
 
-	ExpiryFrom int64  `form:"expiryFrom"`
-	ExpiryTo   int64  `form:"expiryTo"`
-	UsageFrom  int64  `form:"usageFrom"`
-	UsageTo    int64  `form:"usageTo"`
-	AutoRenew  string `form:"autoRenew"`
+	ExpiryFrom int64  `query:"expiryFrom"`
+	ExpiryTo   int64  `query:"expiryTo"`
+	UsageFrom  int64  `query:"usageFrom"`
+	UsageTo    int64  `query:"usageTo"`
+	AutoRenew  string `query:"autoRenew"`
 	HasTgID    string `form:"hasTgId"`
 	HasComment string `form:"hasComment"`
 	Group      string `form:"group"`

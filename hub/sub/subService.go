@@ -242,8 +242,8 @@ func (s *SubService) getInboundsBySubId(subId string) ([]*model.Inbound, error) 
 		JOIN clients ON clients.id = client_inbounds.client_id
 		WHERE
 			inbounds.protocol in ('vmess','vless','trojan','shadowsocks','hysteria')
-			AND clients.sub_id = ? AND inbounds.enable = ?
-	)`, subId, true).Find(&inbounds).Error
+			AND clients.sub_id = ?
+	)`, subId).Find(&inbounds).Error
 	if err != nil {
 		return nil, err
 	}

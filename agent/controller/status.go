@@ -27,8 +27,12 @@ func getXrayVersion() string {
 			continue
 		}
 		line := strings.TrimSpace(string(out))
-		if idx := strings.Index(line, " "); idx > 0 {
-			return line[:idx]
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			return fields[1]
+		}
+		if len(fields) == 1 {
+			return fields[0]
 		}
 		return line
 	}

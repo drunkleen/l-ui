@@ -12,6 +12,7 @@ import (
 	"github.com/drunkleen/l-ui/internal/bundle"
 	"github.com/drunkleen/l-ui/internal/database"
 	"github.com/drunkleen/l-ui/internal/database/model"
+	"github.com/drunkleen/l-ui/internal/logger"
 	"github.com/drunkleen/l-ui/internal/nodeauth"
 	"github.com/drunkleen/l-ui/internal/sshutil"
 	archutil "github.com/drunkleen/l-ui/internal/util/arch"
@@ -736,5 +737,16 @@ exit 1`, node.ApiToken, timestamp, nonce, signature, bodyDigest, req.AgentPort)
 	if err := s.persistBootstrapNode(&node); err != nil {
 		return &NodeBootstrapResult{Node: &node, Steps: steps}, err
 	}
+
+	// Push default xray config so xray has a valid config file to start with.
+	xrayConfig, _, cfgErr := BuildNodePushPayload(node.Id)
+	if cfgErr == nil && len(xrayConfig) > 0 {
+		if applyErr := s.ApplyNodeConfig(node.Id, xrayConfig); applyErr != nil {
+			logger.Warningf("bootstrap: initial config push for node %d failed: %v", node.Id, applyErr)
+		}
+	} else if cfgErr != nil {
+		logger.Warningf("bootstrap: building initial config for node %d failed: %v", node.Id, cfgErr)
+	}
+
 	return &NodeBootstrapResult{Node: &node, Steps: steps}, nil
 }
