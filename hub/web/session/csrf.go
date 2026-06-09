@@ -6,8 +6,7 @@ import (
 	"encoding/base64"
 	"io"
 
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 const csrfTokenKey = "CSRF_TOKEN"
@@ -16,8 +15,11 @@ const csrfTokenKey = "CSRF_TOKEN"
 const CSRFHeaderName = "X-CSRF-Token"
 
 // EnsureCSRFToken returns the current session CSRF token or creates one.
-func EnsureCSRFToken(c *gin.Context) (string, error) {
-	s := sessions.Default(c)
+func EnsureCSRFToken(c fiber.Ctx) (string, error) {
+	s := sessionForContext(c)
+	if s == nil {
+		return "", nil
+	}
 	if token, ok := s.Get(csrfTokenKey).(string); ok && token != "" {
 		return token, nil
 	}
@@ -26,19 +28,22 @@ func EnsureCSRFToken(c *gin.Context) (string, error) {
 		return "", err
 	}
 	s.Set(csrfTokenKey, token)
-	return token, s.Save()
+	return token, nil
 }
 
 // ValidateCSRFToken checks the submitted CSRF token against the session token.
-func ValidateCSRFToken(c *gin.Context) bool {
-	s := sessions.Default(c)
+func ValidateCSRFToken(c fiber.Ctx) bool {
+	s := sessionForContext(c)
+	if s == nil {
+		return false
+	}
 	expected, ok := s.Get(csrfTokenKey).(string)
 	if !ok || expected == "" {
 		return false
 	}
-	actual := c.GetHeader(CSRFHeaderName)
+	actual := c.Get("X-CSRF-Token")
 	if actual == "" {
-		actual = c.PostForm("_csrf")
+		actual = c.FormValue("_csrf")
 	}
 	if len(actual) != len(expected) {
 		return false

@@ -1,38 +1,34 @@
 package controller
 
 import (
-	"net/http"
 	"strconv"
 
 	"github.com/drunkleen/l-ui/agent/service"
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 var fwSvc = service.NewFirewallService()
 
-func (s *FirewallController) GetStatus(c *gin.Context) {
+func (s *FirewallController) GetStatus(c fiber.Ctx) error {
 	status, err := fwSvc.GetStatus()
 	if err != nil {
-		abortJSONError(c, http.StatusInternalServerError, err.Error())
-		return
+		return abortJSONError(c, fiber.StatusInternalServerError, err.Error())
 	}
 	if status == nil {
-		abortJSONError(c, http.StatusInternalServerError, "unable to determine firewall status")
-		return
+		return abortJSONError(c, fiber.StatusInternalServerError, "unable to determine firewall status")
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "obj": status})
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true, "obj": status})
 }
 
-func (s *FirewallController) GetRules(c *gin.Context) {
+func (s *FirewallController) GetRules(c fiber.Ctx) error {
 	rules, err := fwSvc.GetRules()
 	if err != nil {
-		abortJSONError(c, http.StatusInternalServerError, err.Error())
-		return
+		return abortJSONError(c, fiber.StatusInternalServerError, err.Error())
 	}
 	if rules == nil {
 		rules = []service.FirewallRule{}
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "obj": gin.H{"rules": rules}})
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true, "obj": fiber.Map{"rules": rules}})
 }
 
 type addRuleRequest struct {
@@ -42,67 +38,60 @@ type addRuleRequest struct {
 	Comment  string `json:"comment"`
 }
 
-func (s *FirewallController) AddRule(c *gin.Context) {
+func (s *FirewallController) AddRule(c fiber.Ctx) error {
 	var req addRuleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		abortJSONError(c, http.StatusBadRequest, "invalid request: "+err.Error())
-		return
+	if err := c.Bind().JSON(&req); err != nil {
+		return abortJSONError(c, fiber.StatusBadRequest, "invalid request: "+err.Error())
 	}
 	if req.Port == "" {
-		abortJSONError(c, http.StatusBadRequest, "port is required")
-		return
+		return abortJSONError(c, fiber.StatusBadRequest, "port is required")
+	}
+	if req.Action != "allow" && req.Action != "deny" && req.Action != "reject" && req.Action != "limit" {
+		return abortJSONError(c, fiber.StatusBadRequest, "action must be one of: allow, deny, reject, limit")
 	}
 	if req.Protocol != "" && req.Protocol != "tcp" && req.Protocol != "udp" {
-		abortJSONError(c, http.StatusBadRequest, "protocol must be tcp or udp")
-		return
+		return abortJSONError(c, fiber.StatusBadRequest, "protocol must be tcp or udp")
 	}
 	portInt, err := strconv.Atoi(req.Port)
 	if err != nil || portInt < 1 || portInt > 65535 {
-		abortJSONError(c, http.StatusBadRequest, "port must be a valid number between 1 and 65535")
-		return
+		return abortJSONError(c, fiber.StatusBadRequest, "port must be a valid number between 1 and 65535")
 	}
 
 	if err := fwSvc.AddRule(req.Port, req.Protocol, req.Action, req.Comment); err != nil {
-		abortJSONError(c, http.StatusInternalServerError, "failed to add rule: "+err.Error())
-		return
+		return abortJSONError(c, fiber.StatusInternalServerError, "failed to add rule: "+err.Error())
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "rule added"})
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true, "msg": "rule added"})
 }
 
 type deleteRuleRequest struct {
 	RuleNumber string `json:"rule_number" binding:"required"`
 }
 
-func (s *FirewallController) DeleteRule(c *gin.Context) {
+func (s *FirewallController) DeleteRule(c fiber.Ctx) error {
 	var req deleteRuleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		abortJSONError(c, http.StatusBadRequest, "invalid request: "+err.Error())
-		return
+	if err := c.Bind().JSON(&req); err != nil {
+		return abortJSONError(c, fiber.StatusBadRequest, "invalid request: "+err.Error())
 	}
 	if req.RuleNumber == "" {
-		abortJSONError(c, http.StatusBadRequest, "rule_number is required")
-		return
+		return abortJSONError(c, fiber.StatusBadRequest, "rule_number is required")
 	}
 
 	if err := fwSvc.DeleteRule(req.RuleNumber); err != nil {
-		abortJSONError(c, http.StatusInternalServerError, "failed to delete rule: "+err.Error())
-		return
+		return abortJSONError(c, fiber.StatusInternalServerError, "failed to delete rule: "+err.Error())
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "rule deleted"})
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true, "msg": "rule deleted"})
 }
 
-func (s *FirewallController) Enable(c *gin.Context) {
+func (s *FirewallController) Enable(c fiber.Ctx) error {
 	if err := fwSvc.Enable(); err != nil {
-		abortJSONError(c, http.StatusInternalServerError, "failed to enable ufw: "+err.Error())
-		return
+		return abortJSONError(c, fiber.StatusInternalServerError, "failed to enable ufw: "+err.Error())
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "ufw enabled"})
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true, "msg": "ufw enabled"})
 }
 
-func (s *FirewallController) Disable(c *gin.Context) {
+func (s *FirewallController) Disable(c fiber.Ctx) error {
 	if err := fwSvc.Disable(); err != nil {
-		abortJSONError(c, http.StatusInternalServerError, "failed to disable ufw: "+err.Error())
-		return
+		return abortJSONError(c, fiber.StatusInternalServerError, "failed to disable ufw: "+err.Error())
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "ufw disabled"})
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true, "msg": "ufw disabled"})
 }

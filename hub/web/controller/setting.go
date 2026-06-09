@@ -11,7 +11,7 @@ import (
 	"github.com/drunkleen/l-ui/hub/web/service"
 	"github.com/drunkleen/l-ui/hub/web/session"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 // updateUserForm represents the form for updating user credentials.
@@ -31,63 +31,66 @@ type SettingController struct {
 }
 
 // NewSettingController creates a new SettingController and initializes its routes.
-func NewSettingController(g *gin.RouterGroup) *SettingController {
+func NewSettingController(router fiber.Router) *SettingController {
 	a := &SettingController{}
-	a.initRouter(g)
+	a.initRouter(router)
 	return a
 }
 
 // initRouter sets up the routes for settings management.
-func (a *SettingController) initRouter(g *gin.RouterGroup) {
-	g = g.Group("/setting")
+func (a *SettingController) initRouter(router fiber.Router) {
+	router = router.Group("/setting")
 
-	g.POST("/all", a.getAllSetting)
-	g.GET("/users", a.listUsers)
-	g.POST("/defaultSettings", a.getDefaultSettings)
-	g.POST("/update", a.updateSetting)
-	g.POST("/updateUser", a.updateUser)
-	g.POST("/restartPanel", a.restartPanel)
-	g.GET("/getDefaultJsonConfig", a.getDefaultXrayConfig)
-	g.GET("/apiTokens", a.listApiTokens)
-	g.POST("/apiTokens/create", a.createApiToken)
-	g.POST("/apiTokens/delete/:id", a.deleteApiToken)
-	g.POST("/apiTokens/setEnabled/:id", a.setApiTokenEnabled)
+	router.Post("/all", a.getAllSetting)
+	router.Get("/users", a.listUsers)
+	router.Post("/defaultSettings", a.getDefaultSettings)
+	router.Post("/update", a.updateSetting)
+	router.Post("/updateUser", a.updateUser)
+	router.Post("/restartPanel", a.restartPanel)
+	router.Get("/getDefaultJsonConfig", a.getDefaultXrayConfig)
+	router.Get("/apiTokens", a.listApiTokens)
+	router.Post("/apiTokens/create", a.createApiToken)
+	router.Post("/apiTokens/delete/:id", a.deleteApiToken)
+	router.Post("/apiTokens/setEnabled/:id", a.setApiTokenEnabled)
 }
 
 // getAllSetting retrieves all current settings.
-func (a *SettingController) getAllSetting(c *gin.Context) {
+func (a *SettingController) getAllSetting(c fiber.Ctx) error {
 	allSetting, err := a.settingService.GetAllSetting()
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.getSettings"), err)
-		return
+		return nil
 	}
 	jsonObj(c, allSetting, nil)
+	return nil
 }
 
 // getDefaultSettings retrieves the default settings based on the host.
-func (a *SettingController) getDefaultSettings(c *gin.Context) {
-	result, err := a.settingService.GetDefaultSettings(c.Request.Host)
+func (a *SettingController) getDefaultSettings(c fiber.Ctx) error {
+	result, err := a.settingService.GetDefaultSettings(c.Hostname())
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.getSettings"), err)
-		return
+		return nil
 	}
 	jsonObj(c, result, nil)
+	return nil
 }
 
-func (a *SettingController) listUsers(c *gin.Context) {
+func (a *SettingController) listUsers(c fiber.Ctx) error {
 	users, err := a.userService.ListUsers()
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.getSettings"), err)
-		return
+		return nil
 	}
 	jsonObj(c, users, nil)
+	return nil
 }
 
 // updateSetting updates all settings with the provided data.
-func (a *SettingController) updateSetting(c *gin.Context) {
+func (a *SettingController) updateSetting(c fiber.Ctx) error {
 	allSetting, ok := middleware.BindAndValidate[entity.AllSetting](c)
 	if !ok {
-		return
+		return nil
 	}
 	oldTwoFactor, twoFactorErr := a.settingService.GetTwoFactorEnable()
 	err := a.settingService.UpdateAllSetting(allSetting)
@@ -97,24 +100,25 @@ func (a *SettingController) updateSetting(c *gin.Context) {
 		}
 	}
 	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
+	return nil
 }
 
 // updateUser updates the current user's username and password.
-func (a *SettingController) updateUser(c *gin.Context) {
+func (a *SettingController) updateUser(c fiber.Ctx) error {
 	form := &updateUserForm{}
-	err := c.ShouldBind(form)
+	err := c.Bind().Body(form)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
-		return
+		return nil
 	}
 	user := session.GetLoginUser(c)
 	if user.Username != form.OldUsername || !crypto.CheckPasswordHash(user.Password, form.OldPassword) {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifyUserError"), errors.New(I18nWeb(c, "pages.settings.toasts.originalUserPassIncorrect")))
-		return
+		return nil
 	}
 	if form.NewUsername == "" || form.NewPassword == "" {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifyUserError"), errors.New(I18nWeb(c, "pages.settings.toasts.userPassMustBeNotEmpty")))
-		return
+		return nil
 	}
 	err = a.userService.UpdateUser(user.Id, form.NewUsername, form.NewPassword)
 	if err == nil {
@@ -125,22 +129,25 @@ func (a *SettingController) updateUser(c *gin.Context) {
 		}
 	}
 	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifyUser"), err)
+	return nil
 }
 
 // restartPanel restarts the panel service after a delay.
-func (a *SettingController) restartPanel(c *gin.Context) {
+func (a *SettingController) restartPanel(c fiber.Ctx) error {
 	err := a.panelService.RestartPanel(time.Second * 3)
 	jsonMsg(c, I18nWeb(c, "pages.settings.restartPanelSuccess"), err)
+	return nil
 }
 
 // getDefaultXrayConfig retrieves the default Xray configuration.
-func (a *SettingController) getDefaultXrayConfig(c *gin.Context) {
+func (a *SettingController) getDefaultXrayConfig(c fiber.Ctx) error {
 	defaultJsonConfig, err := a.settingService.GetDefaultXrayConfig()
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.getSettings"), err)
-		return
+		return nil
 	}
 	jsonObj(c, defaultJsonConfig, nil)
+	return nil
 }
 
 type apiTokenCreateForm struct {
@@ -151,48 +158,52 @@ type apiTokenEnabledForm struct {
 	Enabled bool `json:"enabled" form:"enabled"`
 }
 
-func (a *SettingController) listApiTokens(c *gin.Context) {
+func (a *SettingController) listApiTokens(c fiber.Ctx) error {
 	rows, err := a.apiTokenService.List()
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.getSettings"), err)
-		return
+		return nil
 	}
 	jsonObj(c, rows, nil)
+	return nil
 }
 
-func (a *SettingController) createApiToken(c *gin.Context) {
+func (a *SettingController) createApiToken(c fiber.Ctx) error {
 	form := &apiTokenCreateForm{}
-	if err := c.ShouldBind(form); err != nil {
+	if err := c.Bind().Body(form); err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
-		return
+		return nil
 	}
 	row, err := a.apiTokenService.Create(form.Name)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
-		return
+		return nil
 	}
 	jsonObj(c, row, nil)
+	return nil
 }
 
-func (a *SettingController) deleteApiToken(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+func (a *SettingController) deleteApiToken(c fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
-		return
+		return nil
 	}
 	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), a.apiTokenService.Delete(id))
+	return nil
 }
 
-func (a *SettingController) setApiTokenEnabled(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+func (a *SettingController) setApiTokenEnabled(c fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
-		return
+		return nil
 	}
 	form := &apiTokenEnabledForm{}
-	if bindErr := c.ShouldBind(form); bindErr != nil {
+	if bindErr := c.Bind().Body(form); bindErr != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), bindErr)
-		return
+		return nil
 	}
 	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), a.apiTokenService.SetEnabled(id, form.Enabled))
+	return nil
 }

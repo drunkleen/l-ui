@@ -1,16 +1,11 @@
-// Package web provides the main web server implementation for the l-ui panel,
-// including HTTP/HTTPS serving, routing, templates, and background job scheduling.
 package web
 
 import (
 	"context"
 	"crypto/tls"
 	"embed"
-	"io"
 	"io/fs"
 	"net"
-	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -22,34 +17,26 @@ import (
 	"github.com/drunkleen/l-ui/hub/web/network"
 	"github.com/drunkleen/l-ui/hub/web/runtime"
 	"github.com/drunkleen/l-ui/hub/web/service"
+	"github.com/drunkleen/l-ui/hub/web/session"
 	"github.com/drunkleen/l-ui/hub/web/websocket"
 	"github.com/drunkleen/l-ui/internal/config"
 	"github.com/drunkleen/l-ui/internal/logger"
 	"github.com/drunkleen/l-ui/internal/util/common"
 
-	"github.com/gin-contrib/gzip"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/compress"
+	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/robfig/cron/v3"
 )
 
 //go:embed translation/*
 var i18nFS embed.FS
 
-// distFS embeds the Vite-built frontend (web/dist/). Every user-facing
-// HTML route is served straight out of this FS — the legacy Go
-// templates and `web/assets/` tree are gone post-Phase 8.
-
 //go:embed all:dist
 var distFS embed.FS
 
 var startTime = time.Now()
 
-// wrapDistFS adapts the embedded `dist/` directory so it can be mounted
-// as the panel's `/assets/` static route. Vite emits its bundled JS/CSS
-// under `dist/assets/`; serving the FS rooted at `dist/assets` makes
-// `/assets/<hash>.js` URLs resolve directly.
 type wrapDistFS struct {
 	embed.FS
 }
@@ -86,17 +73,13 @@ func (f *wrapAssetsFileInfo) ModTime() time.Time {
 	return startTime
 }
 
-// EmbeddedDist returns the embedded Vite-built frontend filesystem.
-// Controllers serve their HTML out of this FS via the dist-page handler
-// installed in NewEngine().
 func EmbeddedDist() embed.FS {
 	return distFS
 }
 
-// Server represents the main web server for the l-ui panel with controllers, services, and scheduled jobs.
 type Server struct {
-	httpServer *http.Server
-	listener   net.Listener
+	app      *fiber.App
+	listener net.Listener
 
 	index *controller.IndexController
 	panel *controller.LUIController
@@ -116,11 +99,8 @@ type Server struct {
 	cancel context.CancelFunc
 }
 
-// ModeString returns the operating mode. Always returns "hub" since agent
-// mode was extracted into the standalone agent binary.
 func (s *Server) ModeString() string { return "hub" }
 
-// NewServer creates a new web server instance with a cancellable context.
 func NewServer() *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
@@ -139,21 +119,24 @@ func (s *Server) isDirectHTTPSConfigured() bool {
 	return err == nil
 }
 
-// initRouter initializes Gin, registers middleware, templates, static
-// assets, controllers and returns the configured engine.
-func (s *Server) initRouter() (*gin.Engine, error) {
+func (s *Server) initRouter() (*fiber.App, error) {
+	app := fiber.New(fiber.Config{
+		AppName:      "l-ui",
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			c.Status(fiber.StatusNotFound)
+			return nil
+		},
+	})
+
 	if config.IsDebug() {
-		gin.SetMode(gin.DebugMode)
+		app.Use(recover.New())
 	} else {
-		gin.DefaultWriter = io.Discard
-		gin.DefaultErrorWriter = io.Discard
-		gin.SetMode(gin.ReleaseMode)
+		app.Server().LogAllErrors = false
 	}
 
-	engine := gin.Default()
 	directHTTPS := s.isDirectHTTPSConfigured()
 	sendHSTS := directHTTPS && !config.IsSkipHSTS()
-	engine.Use(middleware.SecurityHeadersMiddleware(sendHSTS))
+	app.Use(middleware.SecurityHeadersMiddleware(sendHSTS))
 
 	webDomain, err := s.settingService.GetWebDomain()
 	if err != nil {
@@ -161,7 +144,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	}
 
 	if webDomain != "" {
-		engine.Use(middleware.DomainValidatorMiddleware(webDomain))
+		app.Use(middleware.DomainValidatorMiddleware(webDomain))
 	}
 
 	secret, err := s.settingService.GetSecret()
@@ -173,112 +156,118 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	engine.Use(gzip.Gzip(gzip.DefaultCompression))
+
+	app.Use(compress.New(compress.Config{
+		Level: compress.LevelDefault,
+	}))
+
 	assetsBasePath := basePath + "assets/"
 
-	store := cookie.NewStore(secret)
-	// Configure default session cookie options, including expiration (MaxAge)
-	sessionOptions := sessions.Options{
-		Path:     basePath,
-		HttpOnly: true,
-		Secure:   directHTTPS,
-		SameSite: http.SameSiteLaxMode,
+	// Session middleware
+	directHTTPSBool := directHTTPS
+	sessionMaxAge := 0
+	if sma, err := s.settingService.GetSessionMaxAge(); err == nil && sma > 0 {
+		sessionMaxAge = sma * 60 // minutes -> seconds
 	}
-	if sessionMaxAge, err := s.settingService.GetSessionMaxAge(); err == nil && sessionMaxAge > 0 {
-		sessionOptions.MaxAge = sessionMaxAge * 60 // minutes -> seconds
+
+	sessionHandler := session.SetupStore([]byte(secret), basePath, directHTTPSBool, sessionMaxAge)
+	if sessionHandler != nil {
+		app.Use(sessionHandler)
 	}
-	store.Options(sessionOptions)
-	engine.Use(sessions.Sessions("l-ui", store))
-	engine.Use(func(c *gin.Context) {
-		c.Set("base_path", basePath)
-	})
-	engine.Use(func(c *gin.Context) {
-		uri := c.Request.RequestURI
-		if strings.HasPrefix(uri, assetsBasePath) {
-			c.Header("Cache-Control", "max-age=31536000")
-		}
+
+	app.Use(func(c fiber.Ctx) error {
+		c.Locals("base_path", basePath)
+		return c.Next()
 	})
 
-	// init i18n — still used by backend strings (errors, log messages,
-	// SubPage menu entries) even though the Go template engine is gone.
+	app.Use(func(c fiber.Ctx) error {
+		uri := c.Path()
+		if strings.HasPrefix(uri, assetsBasePath) {
+			c.Set("Cache-Control", "max-age=31536000")
+		}
+		return c.Next()
+	})
+
 	err = locale.InitLocalizer(i18nFS, &s.settingService)
 	if err != nil {
 		return nil, err
 	}
 
-	engine.Use(locale.LocalizerMiddleware())
+	app.Use(locale.LocalizerMiddleware())
 
-	g := engine.Group(basePath)
+	g := app.Group(basePath)
+
 	// Serve Vite-built frontend assets
 	if config.IsDebug() {
-		engine.StaticFS(basePath+"assets", http.FS(os.DirFS("web/dist/assets")))
+		g.Get("/assets/*", func(c fiber.Ctx) error {
+			path := strings.TrimPrefix(c.Params("*"), "/")
+			if path == "" {
+				path = c.Params("*")
+			}
+			filePath := "web/dist/assets/" + path
+			return c.SendFile(filePath)
+		})
 	} else {
-		engine.StaticFS(basePath+"assets", http.FS(&wrapDistFS{FS: distFS}))
+		g.Get("/assets/*", func(c fiber.Ctx) error {
+			path := strings.TrimPrefix(c.Params("*"), "/")
+			if path == "" {
+				path = c.Params("*")
+			}
+			data, err := distFS.ReadFile("dist/assets/" + path)
+			if err != nil {
+				return c.SendStatus(fiber.StatusNotFound)
+			}
+			c.Set("Cache-Control", "max-age=31536000")
+			return c.Send(data)
+		})
 	}
 
-	engine.Use(middleware.RedirectMiddleware(basePath))
+	app.Use(middleware.RedirectMiddleware(basePath))
 
 	controller.SetDistFS(distFS)
 
 	s.index = controller.NewIndexController(g)
 	s.panel = controller.NewLUIController(g)
-	g.GET("/panel/api/openapi.json", controller.ServeOpenAPISpec)
+	g.Get("/panel/api/openapi.json", controller.ServeOpenAPISpec)
 	s.api = controller.NewAPIController(g, s.customGeoService)
 
 	s.wsHub = websocket.NewHub()
 	go s.wsHub.Run()
 
 	s.ws = controller.NewWebSocketController(service.NewWebSocketService(s.wsHub))
-	g.GET("/ws", s.ws.HandleWebSocket)
+	g.Get("/ws", s.ws.HandleWebSocket)
 
-	engine.GET("/.well-known/appspecific/com.chrome.devtools.json", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{})
+	app.Get("/.well-known/appspecific/com.chrome.devtools.json", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{})
 	})
 
-	// Health check endpoints — unauthenticated, engine-level
-	engine.GET("/healthz", controller.Healthz)
-	engine.GET("/readyz", controller.Readyz)
+	app.Get("/healthz", controller.Healthz)
+	app.Get("/readyz", controller.Readyz)
 
-	// Add a catch-all route to handle undefined paths and return 404
-	engine.NoRoute(func(c *gin.Context) {
-		c.AbortWithStatus(http.StatusNotFound)
-	})
-
-	return engine, nil
+	return app, nil
 }
 
-// startTask schedules background jobs (Xray checks, traffic jobs, cron
-// jobs) which the panel relies on for periodic maintenance and monitoring.
 func (s *Server) startTask(restartXray bool) {
 	s.customGeoService.EnsureOnStartup()
 	s.cron.AddJob("@every 5s", job.NewNodeHeartbeatJob())
 	s.cron.AddJob("@every 5s", job.NewNodeTrafficSyncJob())
 
-	// check client ips from log file every day
 	s.cron.AddJob("@daily", job.NewClearLogsJob())
 
-	// Inbound traffic reset jobs
-	// Run every hour
 	s.cron.AddJob("@hourly", job.NewPeriodicTrafficResetJob("hourly"))
-	// Run once a day, midnight
 	s.cron.AddJob("@daily", job.NewPeriodicTrafficResetJob("daily"))
-	// Run once a week, midnight between Sat/Sun
 	s.cron.AddJob("@weekly", job.NewPeriodicTrafficResetJob("weekly"))
-	// Run once a month, midnight, first of month
 	s.cron.AddJob("@monthly", job.NewPeriodicTrafficResetJob("monthly"))
 
-	// LDAP sync scheduling
 	if ldapEnabled, _ := s.settingService.GetLdapEnable(); ldapEnabled {
 		runtime, err := s.settingService.GetLdapSyncCron()
 		if err != nil || runtime == "" {
 			runtime = "@every 1m"
 		}
 		j := job.NewLdapSyncJob()
-		// job has zero-value services with method receivers that read settings on demand
 		s.cron.AddJob(runtime, j)
 	}
 
-	// Make a traffic condition every day, 8:30
 	var entry cron.EntryID
 	isTgbotenabled, err := s.settingService.GetTgbotEnabled()
 	if (err == nil) && (isTgbotenabled) {
@@ -297,37 +286,30 @@ func (s *Server) startTask(restartXray bool) {
 			return
 		}
 
-		// check for Telegram bot callback query hash storage reset
 		s.cron.AddJob("@every 2m", job.NewCheckHashStorageJob())
 
-		// Check CPU load and alarm to TgBot if threshold passes
 		cpuThreshold, err := s.settingService.GetTgCpu()
 		if (err == nil) && (cpuThreshold > 0) {
 			s.cron.AddJob("@every 10s", job.NewCheckCpuJob())
 		}
 
-		// Node monitoring alerts (down + resource thresholds)
 		s.cron.AddJob("@every 10s", job.NewNodeAlertJob())
 	} else {
 		s.cron.Remove(entry)
 	}
 
-	// TLS certificate auto-renewal — runs daily, checks all nodes
 	s.cron.AddJob("@daily", job.NewNodeCertRenewalJob())
 }
 
-// Start initializes and starts the web server with configured settings, routes, and background jobs.
 func (s *Server) Start() (err error) {
 	return s.start(true, true)
 }
 
-// StartPanelOnly initializes the panel during an in-process panel restart without cycling Xray.
 func (s *Server) StartPanelOnly() (err error) {
 	return s.start(false, false)
 }
 
 func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
-	// This is an anonymous function, no function name
 	defer func() {
 		if err != nil {
 			s.Stop()
@@ -343,10 +325,6 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 	s.cron = cron.New(cron.WithLocation(loc), cron.WithSeconds())
 	s.cron.Start()
 
-	// Wire the inbound-runtime manager once so InboundService can route
-	// add/update/delete to either the local xray or a remote node panel.
-	// The closures bridge into XrayService (which owns the running xray
-	// process state) without forcing the runtime package to import service.
 	runtime.SetManager(runtime.NewManager(runtime.LocalDeps{
 		APIPort:        func() int { return s.xrayService.GetXrayAPIPort() },
 		SetNeedRestart: func() { s.xrayService.SetToNeedRestart() },
@@ -354,10 +332,11 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 
 	s.customGeoService = service.NewCustomGeoService()
 
-	engine, err := s.initRouter()
+	app, err := s.initRouter()
 	if err != nil {
 		return err
 	}
+	s.app = app
 
 	certFile, err := s.settingService.GetCertFile()
 	if err != nil {
@@ -398,16 +377,10 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 	}
 	s.listener = listener
 
-	s.httpServer = &http.Server{
-		Handler:           engine,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       120 * time.Second,
-	}
-
 	go func() {
-		s.httpServer.Serve(listener)
+		if err := app.Listener(listener); err != nil {
+			logger.Errorf("Web server error: %v", err)
+		}
 	}()
 
 	s.startTask(restartXray)
@@ -423,12 +396,10 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 	return nil
 }
 
-// Stop gracefully shuts down the web server, stops Xray, cron jobs, and Telegram bot.
 func (s *Server) Stop() error {
 	return s.stop(true, true)
 }
 
-// StopPanelOnly stops only panel-owned HTTP/background resources for an in-process panel restart.
 func (s *Server) StopPanelOnly() error {
 	return s.stop(false, false)
 }
@@ -447,16 +418,13 @@ func (s *Server) stop(stopXray bool, stopTgBot bool) error {
 	if stopTgBot && s.tgbotService.IsRunning() {
 		s.tgbotService.Stop()
 	}
-	// Gracefully stop WebSocket hub
 	if s.wsHub != nil {
 		s.wsHub.Stop()
 	}
 	var err1 error
 	var err2 error
-	if s.httpServer != nil {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer shutdownCancel()
-		err1 = s.httpServer.Shutdown(shutdownCtx)
+	if s.app != nil {
+		err1 = s.app.ShutdownWithTimeout(15 * time.Second)
 	}
 	if s.listener != nil {
 		err2 = s.listener.Close()
@@ -464,17 +432,14 @@ func (s *Server) stop(stopXray bool, stopTgBot bool) error {
 	return common.Combine(err1, err2)
 }
 
-// GetCtx returns the server's context for cancellation and deadline management.
 func (s *Server) GetCtx() context.Context {
 	return s.ctx
 }
 
-// GetCron returns the server's cron scheduler instance.
 func (s *Server) GetCron() *cron.Cron {
 	return s.cron
 }
 
-// GetWSHub returns the WebSocket hub instance.
 func (s *Server) GetWSHub() any {
 	return s.wsHub
 }

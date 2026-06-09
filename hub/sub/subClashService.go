@@ -5,12 +5,12 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/goccy/go-json"
+	"encoding/json"
 	yaml "github.com/goccy/go-yaml"
 
+	"github.com/drunkleen/l-ui/hub/web/service"
 	"github.com/drunkleen/l-ui/internal/database/model"
 	"github.com/drunkleen/l-ui/internal/logger"
-	"github.com/drunkleen/l-ui/hub/web/service"
 )
 
 type SubClashService struct {

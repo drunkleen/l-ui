@@ -1,16 +1,13 @@
 package controller
 
 import (
-	"net/http"
-
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
-func (s *SysInfoController) GetSysInfo(c *gin.Context) {
+func (s *SysInfoController) GetSysInfo(c fiber.Ctx) error {
 	info, err := sysSvc.GetInfo()
 	if err != nil {
-		abortJSONError(c, http.StatusInternalServerError, err.Error())
-		return
+		return abortJSONError(c, fiber.StatusInternalServerError, err.Error())
 	}
-	c.JSON(http.StatusOK, info)
+	return c.Status(fiber.StatusOK).JSON(info)
 }

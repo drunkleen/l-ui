@@ -2,22 +2,20 @@ package middleware
 
 import (
 	"errors"
-	"net/http"
 	"reflect"
 	"strings"
 
-	"github.com/gin-gonic/gin"
-	"github.com/gin-gonic/gin/binding"
-	"github.com/go-playground/validator/v10"
-
 	"github.com/drunkleen/l-ui/hub/web/entity"
+
+	"github.com/go-playground/validator/v10"
+	"github.com/gofiber/fiber/v3"
 )
 
 var validate = validator.New(validator.WithRequiredStructEnabled())
 
-func BindAndValidate[T any](c *gin.Context) (*T, bool) {
+func BindAndValidate[T any](c fiber.Ctx) (*T, bool) {
 	var dst T
-	if err := c.ShouldBind(&dst); err != nil {
+	if err := c.Bind().Body(&dst); err != nil {
 		writeBindFailure(c, err)
 		return nil, false
 	}
@@ -28,8 +26,8 @@ func BindAndValidate[T any](c *gin.Context) (*T, bool) {
 	return &dst, true
 }
 
-func BindAndValidateInto(c *gin.Context, dst any) bool {
-	if err := c.ShouldBind(dst); err != nil {
+func BindAndValidateInto(c fiber.Ctx, dst any) bool {
+	if err := c.Bind().Body(dst); err != nil {
 		writeBindFailure(c, err)
 		return false
 	}
@@ -40,9 +38,9 @@ func BindAndValidateInto(c *gin.Context, dst any) bool {
 	return true
 }
 
-func BindJSONAndValidate[T any](c *gin.Context) (*T, bool) {
+func BindJSONAndValidate[T any](c fiber.Ctx) (*T, bool) {
 	var dst T
-	if err := c.ShouldBindWith(&dst, binding.JSON); err != nil {
+	if err := c.Bind().JSON(&dst); err != nil {
 		writeBindFailure(c, err)
 		return nil, false
 	}
@@ -53,8 +51,8 @@ func BindJSONAndValidate[T any](c *gin.Context) (*T, bool) {
 	return &dst, true
 }
 
-func BindJSONAndValidateInto(c *gin.Context, dst any) bool {
-	if err := c.ShouldBindWith(dst, binding.JSON); err != nil {
+func BindJSONAndValidateInto(c fiber.Ctx, dst any) bool {
+	if err := c.Bind().JSON(dst); err != nil {
 		writeBindFailure(c, err)
 		return false
 	}
@@ -77,7 +75,7 @@ type ValidationPayload struct {
 	Message string       `json:"message"`
 }
 
-func writeBindFailure(c *gin.Context, err error) {
+func writeBindFailure(c fiber.Ctx, err error) {
 	payload := ValidationPayload{Issues: []FieldIssue{}, Message: err.Error()}
 
 	var ve validator.ValidationErrors
@@ -93,7 +91,7 @@ func writeBindFailure(c *gin.Context, err error) {
 		}
 	}
 
-	c.AbortWithStatusJSON(http.StatusOK, entity.Msg{
+	c.Status(fiber.StatusOK).JSON(entity.Msg{
 		Success: false,
 		Msg:     "request body failed validation",
 		Obj:     payload,

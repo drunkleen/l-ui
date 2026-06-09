@@ -2,7 +2,6 @@ package controller
 
 import (
 	"errors"
-	"net/http"
 	"strconv"
 
 	"github.com/drunkleen/l-ui/internal/database/model"
@@ -10,7 +9,7 @@ import (
 	"github.com/drunkleen/l-ui/hub/web/entity"
 	"github.com/drunkleen/l-ui/hub/web/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 type CustomGeoController struct {
@@ -18,23 +17,23 @@ type CustomGeoController struct {
 	customGeoService *service.CustomGeoService
 }
 
-func NewCustomGeoController(g *gin.RouterGroup, customGeo *service.CustomGeoService) *CustomGeoController {
+func NewCustomGeoController(router fiber.Router, customGeo *service.CustomGeoService) *CustomGeoController {
 	a := &CustomGeoController{customGeoService: customGeo}
-	a.initRouter(g)
+	a.initRouter(router)
 	return a
 }
 
-func (a *CustomGeoController) initRouter(g *gin.RouterGroup) {
-	g.GET("/list", a.list)
-	g.GET("/aliases", a.aliases)
-	g.POST("/add", a.add)
-	g.POST("/update/:id", a.update)
-	g.POST("/delete/:id", a.delete)
-	g.POST("/download/:id", a.download)
-	g.POST("/update-all", a.updateAll)
+func (a *CustomGeoController) initRouter(router fiber.Router) {
+	router.Get("/list", a.list)
+	router.Get("/aliases", a.aliases)
+	router.Post("/add", a.add)
+	router.Post("/update/:id", a.update)
+	router.Post("/delete/:id", a.delete)
+	router.Post("/download/:id", a.download)
+	router.Post("/update-all", a.updateAll)
 }
 
-func mapCustomGeoErr(c *gin.Context, err error) error {
+func mapCustomGeoErr(c fiber.Ctx, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -73,22 +72,24 @@ func mapCustomGeoErr(c *gin.Context, err error) error {
 	}
 }
 
-func (a *CustomGeoController) list(c *gin.Context) {
+func (a *CustomGeoController) list(c fiber.Ctx) error {
 	list, err := a.customGeoService.GetAll()
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.index.customGeoToastList"), mapCustomGeoErr(c, err))
-		return
+		return nil
 	}
 	jsonObj(c, list, nil)
+	return nil
 }
 
-func (a *CustomGeoController) aliases(c *gin.Context) {
+func (a *CustomGeoController) aliases(c fiber.Ctx) error {
 	out, err := a.customGeoService.GetAliasesForUI()
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.index.customGeoAliasesError"), mapCustomGeoErr(c, err))
-		return
+		return nil
 	}
 	jsonObj(c, out, nil)
+	return nil
 }
 
 type customGeoForm struct {
@@ -97,11 +98,11 @@ type customGeoForm struct {
 	Url   string `json:"url" form:"url"`
 }
 
-func (a *CustomGeoController) add(c *gin.Context) {
+func (a *CustomGeoController) add(c fiber.Ctx) error {
 	var form customGeoForm
-	if err := c.ShouldBind(&form); err != nil {
+	if err := c.Bind().JSON(&form); err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.index.customGeoToastAdd"), err)
-		return
+		return nil
 	}
 	r := &model.CustomGeoResource{
 		Type:  form.Type,
@@ -110,9 +111,10 @@ func (a *CustomGeoController) add(c *gin.Context) {
 	}
 	err := a.customGeoService.Create(r)
 	jsonMsg(c, I18nWeb(c, "pages.index.customGeoToastAdd"), mapCustomGeoErr(c, err))
+	return nil
 }
 
-func parseCustomGeoID(c *gin.Context, idStr string) (int, bool) {
+func parseCustomGeoID(c fiber.Ctx, idStr string) (int, bool) {
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.index.customGeoInvalidId"), err)
@@ -125,15 +127,15 @@ func parseCustomGeoID(c *gin.Context, idStr string) (int, bool) {
 	return id, true
 }
 
-func (a *CustomGeoController) update(c *gin.Context) {
-	id, ok := parseCustomGeoID(c, c.Param("id"))
+func (a *CustomGeoController) update(c fiber.Ctx) error {
+	id, ok := parseCustomGeoID(c, c.Params("id"))
 	if !ok {
-		return
+		return nil
 	}
 	var form customGeoForm
-	if bindErr := c.ShouldBind(&form); bindErr != nil {
+	if bindErr := c.Bind().JSON(&form); bindErr != nil {
 		jsonMsg(c, I18nWeb(c, "pages.index.customGeoToastUpdate"), bindErr)
-		return
+		return nil
 	}
 	r := &model.CustomGeoResource{
 		Type:  form.Type,
@@ -142,39 +144,43 @@ func (a *CustomGeoController) update(c *gin.Context) {
 	}
 	err := a.customGeoService.Update(id, r)
 	jsonMsg(c, I18nWeb(c, "pages.index.customGeoToastUpdate"), mapCustomGeoErr(c, err))
+	return nil
 }
 
-func (a *CustomGeoController) delete(c *gin.Context) {
-	id, ok := parseCustomGeoID(c, c.Param("id"))
+func (a *CustomGeoController) delete(c fiber.Ctx) error {
+	id, ok := parseCustomGeoID(c, c.Params("id"))
 	if !ok {
-		return
+		return nil
 	}
 	name, err := a.customGeoService.Delete(id)
 	jsonMsg(c, I18nWeb(c, "pages.index.customGeoToastDelete", "fileName=="+name), mapCustomGeoErr(c, err))
+	return nil
 }
 
-func (a *CustomGeoController) download(c *gin.Context) {
-	id, ok := parseCustomGeoID(c, c.Param("id"))
+func (a *CustomGeoController) download(c fiber.Ctx) error {
+	id, ok := parseCustomGeoID(c, c.Params("id"))
 	if !ok {
-		return
+		return nil
 	}
 	name, err := a.customGeoService.TriggerUpdate(id)
 	jsonMsg(c, I18nWeb(c, "pages.index.customGeoToastDownload", "fileName=="+name), mapCustomGeoErr(c, err))
+	return nil
 }
 
-func (a *CustomGeoController) updateAll(c *gin.Context) {
+func (a *CustomGeoController) updateAll(c fiber.Ctx) error {
 	res, err := a.customGeoService.TriggerUpdateAll()
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.index.customGeoToastUpdateAll"), mapCustomGeoErr(c, err))
-		return
+		return nil
 	}
 	if len(res.Failed) > 0 {
-		c.JSON(http.StatusOK, entity.Msg{
+		c.Status(fiber.StatusOK).JSON(entity.Msg{
 			Success: false,
 			Msg:     I18nWeb(c, "pages.index.customGeoErrUpdateAllIncomplete"),
 			Obj:     res,
 		})
-		return
+		return nil
 	}
 	jsonMsgObj(c, I18nWeb(c, "pages.index.customGeoToastUpdateAll"), res, nil)
+	return nil
 }

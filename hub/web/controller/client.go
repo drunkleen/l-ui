@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/drunkleen/l-ui/internal/database/model"
 	"github.com/drunkleen/l-ui/hub/web/service"
 	"github.com/drunkleen/l-ui/hub/web/websocket"
+	"github.com/drunkleen/l-ui/internal/database/model"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 func notifyClientsChanged() {
@@ -23,139 +23,145 @@ type ClientController struct {
 	settingService service.SettingService
 }
 
-func NewClientController(g *gin.RouterGroup) *ClientController {
+func NewClientController(router fiber.Router) *ClientController {
 	a := &ClientController{}
-	a.initRouter(g)
+	a.initRouter(router)
 	return a
 }
 
-func (a *ClientController) initRouter(g *gin.RouterGroup) {
-	g.GET("/list", a.list)
-	g.GET("/list/paged", a.listPaged)
-	g.GET("/get/:email", a.get)
-	g.GET("/traffic/:email", a.getTrafficByEmail)
-	g.GET("/subLinks/:subId", a.getSubLinks)
-	g.GET("/links/:email", a.getClientLinks)
+func (a *ClientController) initRouter(router fiber.Router) {
+	router.Get("/list", a.list)
+	router.Get("/list/paged", a.listPaged)
+	router.Get("/get/:email", a.get)
+	router.Get("/traffic/:email", a.getTrafficByEmail)
+	router.Get("/subLinks/:subId", a.getSubLinks)
+	router.Get("/links/:email", a.getClientLinks)
 
-	g.POST("/add", a.create)
-	g.POST("/update/:email", a.update)
-	g.POST("/del/:email", a.delete)
-	g.POST("/:email/attach", a.attach)
-	g.POST("/:email/detach", a.detach)
-	g.POST("/:email/move", a.move)
-	g.POST("/resetAllTraffics", a.resetAllTraffics)
-	g.POST("/delDepleted", a.delDepleted)
-	g.POST("/bulkAdjust", a.bulkAdjust)
-	g.POST("/bulkDel", a.bulkDelete)
-	g.POST("/bulkCreate", a.bulkCreate)
-	g.POST("/bulkAttach", a.bulkAttach)
-	g.POST("/bulkDetach", a.bulkDetach)
-	g.POST("/bulkMove", a.bulkMove)
-	g.POST("/bulkResetTraffic", a.bulkResetTraffic)
-	g.POST("/resetTraffic/:email", a.resetTrafficByEmail)
-	g.POST("/updateTraffic/:email", a.updateTrafficByEmail)
-	g.POST("/ips/:email", a.getIps)
-	g.POST("/clearIps/:email", a.clearIps)
-	g.POST("/onlines", a.onlines)
-	g.POST("/onlinesByNode", a.onlinesByNode)
-	g.POST("/activeInbounds", a.activeInbounds)
-	g.POST("/lastOnline", a.lastOnline)
+	router.Post("/add", a.create)
+	router.Post("/update/:email", a.update)
+	router.Post("/del/:email", a.delete)
+	router.Post("/:email/attach", a.attach)
+	router.Post("/:email/detach", a.detach)
+	router.Post("/:email/move", a.move)
+	router.Post("/resetAllTraffics", a.resetAllTraffics)
+	router.Post("/delDepleted", a.delDepleted)
+	router.Post("/bulkAdjust", a.bulkAdjust)
+	router.Post("/bulkDel", a.bulkDelete)
+	router.Post("/bulkCreate", a.bulkCreate)
+	router.Post("/bulkAttach", a.bulkAttach)
+	router.Post("/bulkDetach", a.bulkDetach)
+	router.Post("/bulkMove", a.bulkMove)
+	router.Post("/bulkResetTraffic", a.bulkResetTraffic)
+	router.Post("/resetTraffic/:email", a.resetTrafficByEmail)
+	router.Post("/updateTraffic/:email", a.updateTrafficByEmail)
+	router.Post("/ips/:email", a.getIps)
+	router.Post("/clearIps/:email", a.clearIps)
+	router.Post("/onlines", a.onlines)
+	router.Post("/onlinesByNode", a.onlinesByNode)
+	router.Post("/activeInbounds", a.activeInbounds)
+	router.Post("/lastOnline", a.lastOnline)
 }
 
-func (a *ClientController) list(c *gin.Context) {
+func (a *ClientController) list(c fiber.Ctx) error {
 	rows, err := a.clientService.List()
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
-		return
+		return nil
 	}
 	jsonObj(c, rows, nil)
+	return nil
 }
 
-func (a *ClientController) listPaged(c *gin.Context) {
+func (a *ClientController) listPaged(c fiber.Ctx) error {
 	var params service.ClientPageParams
-	if err := c.ShouldBindQuery(&params); err != nil {
+	if err := c.Bind().Query(&params); err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
-		return
+		return nil
 	}
 	resp, err := a.clientService.ListPaged(&a.inboundService, &a.settingService, params)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
-		return
+		return nil
 	}
 	jsonObj(c, resp, nil)
+	return nil
 }
 
-func (a *ClientController) get(c *gin.Context) {
-	email := c.Param("email")
+func (a *ClientController) get(c fiber.Ctx) error {
+	email := c.Params("email")
 	rec, err := a.clientService.GetRecordByEmail(nil, email)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "get"), err)
-		return
+		return nil
 	}
 	inboundIds, err := a.clientService.GetInboundIdsForRecord(rec.Id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "get"), err)
-		return
+		return nil
 	}
 	flow, err := a.clientService.EffectiveFlow(nil, rec.Id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "get"), err)
-		return
+		return nil
 	}
 	rec.Flow = flow
-	jsonObj(c, gin.H{"client": rec, "inboundIds": inboundIds}, nil)
+	jsonObj(c, fiber.Map{"client": rec, "inboundIds": inboundIds}, nil)
+	return nil
 }
 
-func (a *ClientController) create(c *gin.Context) {
+func (a *ClientController) create(c fiber.Ctx) error {
 	var payload service.ClientCreatePayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
+	if err := c.Bind().JSON(&payload); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	needRestart, err := a.clientService.Create(&a.inboundService, &payload)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientAddSuccess"), nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
-func (a *ClientController) update(c *gin.Context) {
-	email := c.Param("email")
+func (a *ClientController) update(c fiber.Ctx) error {
+	email := c.Params("email")
 	var updated model.Client
-	if err := c.ShouldBindJSON(&updated); err != nil {
+	if err := c.Bind().JSON(&updated); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	needRestart, err := a.clientService.UpdateByEmail(&a.inboundService, email, updated)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientUpdateSuccess"), nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
-func (a *ClientController) delete(c *gin.Context) {
-	email := c.Param("email")
+func (a *ClientController) delete(c fiber.Ctx) error {
+	email := c.Params("email")
 	keepTraffic := c.Query("keepTraffic") == "1"
 	needRestart, err := a.clientService.DeleteByEmail(&a.inboundService, email, keepTraffic)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientDeleteSuccess"), nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
 type attachDetachBody struct {
@@ -168,55 +174,58 @@ type moveBody struct {
 	TargetInboundId int `json:"targetInboundId"`
 }
 
-func (a *ClientController) attach(c *gin.Context) {
-	email := c.Param("email")
+func (a *ClientController) attach(c fiber.Ctx) error {
+	email := c.Params("email")
 	var body attachDetachBody
-	if err := c.ShouldBindJSON(&body); err != nil {
+	if err := c.Bind().JSON(&body); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	needRestart, err := a.clientService.AttachByEmail(&a.inboundService, email, body.InboundIds)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientAddSuccess"), nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
-func (a *ClientController) move(c *gin.Context) {
-	email := c.Param("email")
+func (a *ClientController) move(c fiber.Ctx) error {
+	email := c.Params("email")
 	var req moveBody
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.Bind().JSON(&req); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	needRestart, err := a.clientService.Move(&a.inboundService, email, req.SourceNodeId, req.TargetNodeId, req.TargetInboundId)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
-	jsonObj(c, gin.H{"moved": []string{email}}, nil)
+	jsonObj(c, fiber.Map{"moved": []string{email}}, nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
-func (a *ClientController) resetAllTraffics(c *gin.Context) {
+func (a *ClientController) resetAllTraffics(c fiber.Ctx) error {
 	needRestart, err := a.clientService.ResetAllTraffics()
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.resetAllClientTrafficSuccess"), nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
 type bulkAdjustRequest struct {
@@ -225,22 +234,23 @@ type bulkAdjustRequest struct {
 	AddBytes int64    `json:"addBytes"`
 }
 
-func (a *ClientController) bulkAdjust(c *gin.Context) {
+func (a *ClientController) bulkAdjust(c fiber.Ctx) error {
 	var req bulkAdjustRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.Bind().JSON(&req); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	result, needRestart, err := a.clientService.BulkAdjust(&a.inboundService, req.Emails, req.AddDays, req.AddBytes)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonObj(c, result, nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
 type bulkDeleteRequest struct {
@@ -253,22 +263,23 @@ type bulkAttachRequest struct {
 	InboundIds []int    `json:"inboundIds"`
 }
 
-func (a *ClientController) bulkAttach(c *gin.Context) {
+func (a *ClientController) bulkAttach(c fiber.Ctx) error {
 	var req bulkAttachRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.Bind().JSON(&req); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	result, needRestart, err := a.clientService.BulkAttach(&a.inboundService, req.Emails, req.InboundIds)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonObj(c, result, nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
 type bulkDetachRequest struct {
@@ -283,103 +294,109 @@ type bulkMoveRequest struct {
 	TargetInboundId int      `json:"targetInboundId"`
 }
 
-func (a *ClientController) bulkDetach(c *gin.Context) {
+func (a *ClientController) bulkDetach(c fiber.Ctx) error {
 	var req bulkDetachRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.Bind().JSON(&req); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	result, needRestart, err := a.clientService.BulkDetach(&a.inboundService, req.Emails, req.InboundIds)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonObj(c, result, nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
-func (a *ClientController) bulkMove(c *gin.Context) {
+func (a *ClientController) bulkMove(c fiber.Ctx) error {
 	var req bulkMoveRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.Bind().JSON(&req); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	result, needRestart, err := a.clientService.BulkMove(&a.inboundService, req.Emails, req.SourceNodeId, req.TargetNodeId, req.TargetInboundId)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonObj(c, result, nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
-func (a *ClientController) bulkDelete(c *gin.Context) {
+func (a *ClientController) bulkDelete(c fiber.Ctx) error {
 	var req bulkDeleteRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.Bind().JSON(&req); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	result, needRestart, err := a.clientService.BulkDelete(&a.inboundService, req.Emails, req.KeepTraffic)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonObj(c, result, nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
-func (a *ClientController) bulkCreate(c *gin.Context) {
+func (a *ClientController) bulkCreate(c fiber.Ctx) error {
 	var payloads []service.ClientCreatePayload
-	if err := c.ShouldBindJSON(&payloads); err != nil {
+	if err := c.Bind().JSON(&payloads); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	result, needRestart, err := a.clientService.BulkCreate(&a.inboundService, payloads)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonObj(c, result, nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
-func (a *ClientController) delDepleted(c *gin.Context) {
+func (a *ClientController) delDepleted(c fiber.Ctx) error {
 	deleted, needRestart, err := a.clientService.DelDepleted(&a.inboundService)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
-	jsonObj(c, gin.H{"deleted": deleted}, nil)
+	jsonObj(c, fiber.Map{"deleted": deleted}, nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
-func (a *ClientController) resetTrafficByEmail(c *gin.Context) {
-	email := c.Param("email")
+func (a *ClientController) resetTrafficByEmail(c fiber.Ctx) error {
+	email := c.Params("email")
 	needRestart, err := a.clientService.ResetTrafficByEmail(&a.inboundService, email)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.resetInboundClientTrafficSuccess"), nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
 type trafficUpdateRequest struct {
@@ -387,27 +404,28 @@ type trafficUpdateRequest struct {
 	Download int64 `json:"download"`
 }
 
-func (a *ClientController) updateTrafficByEmail(c *gin.Context) {
-	email := c.Param("email")
+func (a *ClientController) updateTrafficByEmail(c fiber.Ctx) error {
+	email := c.Params("email")
 	var req trafficUpdateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.Bind().JSON(&req); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	if err := a.inboundService.UpdateClientTrafficByEmail(email, req.Upload, req.Download); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientUpdateSuccess"), nil)
 	notifyClientsChanged()
+	return nil
 }
 
-func (a *ClientController) getIps(c *gin.Context) {
-	email := c.Param("email")
+func (a *ClientController) getIps(c fiber.Ctx) error {
+	email := c.Params("email")
 	ips, err := a.inboundService.GetInboundClientIps(email)
 	if err != nil || ips == "" {
 		jsonObj(c, "No IP Record", nil)
-		return
+		return nil
 	}
 	type ipWithTimestamp struct {
 		IP        string `json:"ip"`
@@ -428,105 +446,116 @@ func (a *ClientController) getIps(c *gin.Context) {
 			formatted = append(formatted, item.IP)
 		}
 		jsonObj(c, formatted, nil)
-		return
+		return nil
 	}
 	var oldIps []string
 	if err := json.Unmarshal([]byte(ips), &oldIps); err == nil && len(oldIps) > 0 {
 		jsonObj(c, oldIps, nil)
-		return
+		return nil
 	}
 	jsonObj(c, ips, nil)
+	return nil
 }
 
-func (a *ClientController) clearIps(c *gin.Context) {
-	email := c.Param("email")
+func (a *ClientController) clearIps(c fiber.Ctx) error {
+	email := c.Params("email")
 	if err := a.inboundService.ClearClientIps(email); err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.updateSuccess"), err)
-		return
+		return nil
 	}
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.logCleanSuccess"), nil)
+	return nil
 }
 
-func (a *ClientController) onlines(c *gin.Context) {
+func (a *ClientController) onlines(c fiber.Ctx) error {
 	jsonObj(c, a.inboundService.GetOnlineClients(), nil)
+	return nil
 }
 
-func (a *ClientController) onlinesByNode(c *gin.Context) {
+func (a *ClientController) onlinesByNode(c fiber.Ctx) error {
 	jsonObj(c, a.inboundService.GetOnlineClientsByNode(), nil)
+	return nil
 }
 
-func (a *ClientController) activeInbounds(c *gin.Context) {
+func (a *ClientController) activeInbounds(c fiber.Ctx) error {
 	jsonObj(c, a.inboundService.GetActiveInboundsByNode(), nil)
+	return nil
 }
 
-func (a *ClientController) lastOnline(c *gin.Context) {
+func (a *ClientController) lastOnline(c fiber.Ctx) error {
 	data, err := a.inboundService.GetClientsLastOnline()
 	jsonObj(c, data, err)
+	return nil
 }
 
-func (a *ClientController) getTrafficByEmail(c *gin.Context) {
-	email := c.Param("email")
+func (a *ClientController) getTrafficByEmail(c fiber.Ctx) error {
+	email := c.Params("email")
 	traffic, err := a.inboundService.GetClientTrafficByEmail(email)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.trafficGetError"), err)
-		return
+		return nil
 	}
 	jsonObj(c, traffic, nil)
+	return nil
 }
 
-func (a *ClientController) getSubLinks(c *gin.Context) {
-	links, err := a.inboundService.GetSubLinks(resolveHost(c), c.Param("subId"))
+func (a *ClientController) getSubLinks(c fiber.Ctx) error {
+	links, err := a.inboundService.GetSubLinks(c.Hostname(), c.Params("subId"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
-		return
+		return nil
 	}
 	jsonObj(c, links, nil)
+	return nil
 }
 
-func (a *ClientController) getClientLinks(c *gin.Context) {
-	links, err := a.inboundService.GetAllClientLinks(resolveHost(c), c.Param("email"))
+func (a *ClientController) getClientLinks(c fiber.Ctx) error {
+	links, err := a.inboundService.GetAllClientLinks(c.Hostname(), c.Params("email"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
-		return
+		return nil
 	}
 	jsonObj(c, links, nil)
+	return nil
 }
 
-func (a *ClientController) detach(c *gin.Context) {
-	email := c.Param("email")
+func (a *ClientController) detach(c fiber.Ctx) error {
+	email := c.Params("email")
 	var body attachDetachBody
-	if err := c.ShouldBindJSON(&body); err != nil {
+	if err := c.Bind().JSON(&body); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	needRestart, err := a.clientService.DetachByEmailMany(&a.inboundService, email, body.InboundIds)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientDeleteSuccess"), nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
 	notifyClientsChanged()
+	return nil
 }
 
 type bulkResetRequest struct {
 	Emails []string `json:"emails"`
 }
 
-func (a *ClientController) bulkResetTraffic(c *gin.Context) {
+func (a *ClientController) bulkResetTraffic(c fiber.Ctx) error {
 	var req bulkResetRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.Bind().JSON(&req); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	affected, err := a.clientService.BulkResetTraffic(&a.inboundService, req.Emails)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
-	jsonObj(c, gin.H{"affected": affected}, nil)
+	jsonObj(c, fiber.Map{"affected": affected}, nil)
 	a.xrayService.SetToNeedRestart()
 	notifyClientsChanged()
+	return nil
 }

@@ -3,9 +3,10 @@ package sub
 import (
 	"context"
 	"net"
-	"net/http"
 	"testing"
 	"time"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 func TestSubShutdownTimeoutIs15Seconds(t *testing.T) {
@@ -36,9 +37,7 @@ func TestSubStopWithMockServer(t *testing.T) {
 	s := &Server{
 		cancel:   func() {},
 		listener: listener,
-		httpServer: &http.Server{
-			Handler: http.NotFoundHandler(),
-		},
+		app:      fiber.New(),
 	}
 
 	done := make(chan error, 1)
@@ -56,13 +55,13 @@ func TestSubStopWithMockServer(t *testing.T) {
 	}
 }
 
-func TestSubStopWithNilHttpServer(t *testing.T) {
+func TestSubStopWithNilApp(t *testing.T) {
 	s := &Server{
 		cancel: func() {},
 	}
 
 	err := s.Stop()
 	if err != nil {
-		t.Fatalf("Stop() with nil httpServer returned error: %v", err)
+		t.Fatalf("Stop() with nil app returned error: %v", err)
 	}
 }

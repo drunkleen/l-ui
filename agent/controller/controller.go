@@ -1,70 +1,61 @@
 package controller
 
 import (
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/drunkleen/l-ui/internal/nodeauth"
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
-func abortJSONError(c *gin.Context, code int, msg string) {
-	c.JSON(code, gin.H{"error": msg})
-	c.Abort()
+func abortJSONError(c fiber.Ctx, code int, msg string) error {
+	return c.Status(code).JSON(fiber.Map{"error": msg})
 }
 
-func AuthMiddleware(secret string) gin.HandlerFunc {
-	return func(c *gin.Context) {
+func AuthMiddleware(secret string) fiber.Handler {
+	return func(c fiber.Ctx) error {
 		if secret == "" {
-			abortJSONError(c, http.StatusUnauthorized, "node not registered")
-			return
+			return abortJSONError(c, fiber.StatusUnauthorized, "node not registered")
 		}
 
-		auth := c.GetHeader(nodeauth.HeaderAuth)
+		auth := c.Get(nodeauth.HeaderAuth)
 		if !strings.HasPrefix(auth, "Bearer ") {
-			abortJSONError(c, http.StatusUnauthorized, "missing or invalid authorization header")
-			return
+			return abortJSONError(c, fiber.StatusUnauthorized, "missing or invalid authorization header")
 		}
 		token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
 		if token == "" {
-			abortJSONError(c, http.StatusUnauthorized, "empty token")
-			return
+			return abortJSONError(c, fiber.StatusUnauthorized, "empty token")
 		}
 
 		if token == secret {
-			c.Set("authed", true)
-			c.Next()
-			return
+			c.Locals("authed", true)
+			return c.Next()
 		}
 
-		method := c.Request.Method
-		path := c.Request.URL.Path
-		body, _ := c.GetRawData()
+		method := c.Method()
+		path := c.Path()
+		body := c.Body()
 
-		timestampStr := c.GetHeader(nodeauth.HeaderTimestamp)
-		nonce := c.GetHeader(nodeauth.HeaderNonce)
-		signature := c.GetHeader(nodeauth.HeaderSignature)
+		timestampStr := c.Get(nodeauth.HeaderTimestamp)
+		nonce := c.Get(nodeauth.HeaderNonce)
+		signature := c.Get(nodeauth.HeaderSignature)
 
 		if timestampStr == "" || nonce == "" || signature == "" {
-			abortJSONError(c, http.StatusUnauthorized, "missing auth headers")
-			return
+			return abortJSONError(c, fiber.StatusUnauthorized, "missing auth headers")
 		}
 
 		tsInt, err := parseInt64(timestampStr)
 		if err != nil {
-			abortJSONError(c, http.StatusUnauthorized, "invalid timestamp")
-			return
+			return abortJSONError(c, fiber.StatusUnauthorized, "invalid timestamp")
 		}
 
 		if !nodeauth.Verify(secret, method, path, body, tsInt, nonce, signature, time.Now(), 5*time.Minute) {
-			abortJSONError(c, http.StatusUnauthorized, "invalid signature")
-			return
+			return abortJSONError(c, fiber.StatusUnauthorized, "invalid signature")
 		}
 
-		c.Set("authed", true)
-		c.Next()
+		c.Locals("authed", true)
+		return c.Next()
 	}
 }
 

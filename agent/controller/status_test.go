@@ -4,17 +4,27 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 func TestStatusController_GetStatus(t *testing.T) {
-	c, w := newTestContext("GET", "/api/v1/status", "")
 	ctrl := &StatusController{}
-	ctrl.GetStatus(c)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+	app := fiber.New()
+	app.Get("/api/v1/status", ctrl.GetStatus)
+
+	resp, err := app.Test(testRequest("GET", "/api/v1/status", ""), fiber.TestConfig{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
 	}
-	var resp struct {
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var result struct {
 		Success bool `json:"success"`
 		Obj     *struct {
 			CPU     float64 `json:"cpu"`
@@ -28,13 +38,13 @@ func TestStatusController_GetStatus(t *testing.T) {
 			} `json:"disk"`
 		} `json:"obj"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	if !resp.Success {
+	if !result.Success {
 		t.Fatal("expected success=true")
 	}
-	if resp.Obj == nil {
+	if result.Obj == nil {
 		t.Fatal("expected non-nil obj")
 	}
 }

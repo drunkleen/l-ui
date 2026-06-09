@@ -4,16 +4,15 @@ import (
 	"bytes"
 	"embed"
 	htmlpkg "html"
-	"net/http"
 	"strings"
 	"time"
-
-	"github.com/gin-gonic/gin"
 
 	"github.com/drunkleen/l-ui/internal/config"
 	"github.com/drunkleen/l-ui/internal/logger"
 	"github.com/drunkleen/l-ui/hub/web/global"
 	"github.com/drunkleen/l-ui/hub/web/session"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 var distFS embed.FS
@@ -24,29 +23,22 @@ func SetDistFS(fs embed.FS) {
 
 var distPageBuildTime = time.Now()
 
-// ServeOpenAPISpec returns the generated OpenAPI 3.0 description of the
-// panel API. Postman / Insomnia / openapi-generator consume this URL
-// directly; the in-panel Swagger UI page also fetches it. The spec is
-// produced at frontend build time by scripts/build-openapi.mjs and
-// embedded into the binary via the dist FS.
-func ServeOpenAPISpec(c *gin.Context) {
+func ServeOpenAPISpec(c fiber.Ctx) error {
 	body, err := distFS.ReadFile("dist/openapi.json")
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "msg": "openapi.json not found"})
-		return
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"success": false, "msg": "openapi.json not found"})
 	}
-	c.Header("Cache-Control", "public, max-age=300")
-	c.Data(http.StatusOK, "application/json; charset=utf-8", body)
+	c.Set("Cache-Control", "public, max-age=300")
+	return c.Status(fiber.StatusOK).Send(body)
 }
 
-func serveDistPage(c *gin.Context, name string) {
+func serveDistPage(c fiber.Ctx, name string) error {
 	body, err := distFS.ReadFile("dist/" + name)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "missing embedded page: %s", name)
-		return
+		return c.Status(fiber.StatusInternalServerError).SendString("missing embedded page: " + name)
 	}
 
-	basePath := c.GetString("base_path")
+	basePath, _ := c.Locals("base_path").(string)
 	if basePath == "" {
 		basePath = "/"
 	}
@@ -61,9 +53,9 @@ func serveDistPage(c *gin.Context, name string) {
 		`"`, `\"`,
 		"\n", `\n`,
 		"\r", `\r`,
-		"<", `<`,
-		">", `>`,
-		"&", `&`,
+		"<", `\u003C`,
+		">", `\u003E`,
+		"&", `\u0026`,
 	)
 	escapedBase := jsEscape.Replace(basePath)
 	mode := "hub"
@@ -83,7 +75,7 @@ func serveDistPage(c *gin.Context, name string) {
 	basePathMeta := []byte(`<meta name="base-path" content="` + htmlpkg.EscapeString(basePath) + `">`)
 
 	nonceAttr := ""
-	if nonce := c.GetString("csp_nonce"); nonce != "" {
+	if nonce, ok := c.Locals("csp_nonce").(string); ok && nonce != "" {
 		nonceAttr = ` nonce="` + htmlpkg.EscapeString(nonce) + `"`
 	}
 	script := `<script` + nonceAttr + `>window.L_UI_BASE_PATH="` + escapedBase + `"`
@@ -101,9 +93,9 @@ func serveDistPage(c *gin.Context, name string) {
 	inject = append(inject, []byte(`</head>`)...)
 	out := bytes.Replace(body, []byte("</head>"), inject, 1)
 
-	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
-	c.Header("Pragma", "no-cache")
-	c.Header("Expires", "0")
-	c.Header("Last-Modified", distPageBuildTime.UTC().Format(http.TimeFormat))
-	c.Data(http.StatusOK, "text/html; charset=utf-8", out)
+	c.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Set("Pragma", "no-cache")
+	c.Set("Expires", "0")
+	c.Set("Last-Modified", distPageBuildTime.UTC().Format("Mon, 02 Jan 2006 15:04:05 GMT"))
+	return c.Status(fiber.StatusOK).Send(out)
 }

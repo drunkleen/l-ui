@@ -1,13 +1,12 @@
 package controller
 
 import (
-	"net/http"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/drunkleen/l-ui/internal/config"
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 func getXrayVersion() string {
@@ -36,14 +35,13 @@ func getXrayVersion() string {
 	return ""
 }
 
-func (s *StatusController) GetStatus(c *gin.Context) {
+func (s *StatusController) GetStatus(c fiber.Ctx) error {
 	metrics, err := sysSvc.GetMetrics()
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
 			"success": false,
 			"msg":     err.Error(),
 		})
-		return
 	}
 
 	var cpuPct float64
@@ -63,23 +61,23 @@ func (s *StatusController) GetStatus(c *gin.Context) {
 		uptime = metrics.Uptime
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"success": true,
-		"obj": gin.H{
+		"obj": fiber.Map{
 			"cpu": cpuPct,
-			"mem": gin.H{
+			"mem": fiber.Map{
 				"current": memCurrent,
 				"total":   memTotal,
 			},
-			"disk": gin.H{
+			"disk": fiber.Map{
 				"current": diskCurrent,
 				"total":   diskTotal,
 			},
-			"netIO": gin.H{
+			"netIO": fiber.Map{
 				"up":   netUp,
 				"down": netDown,
 			},
-			"xray": gin.H{
+			"xray": fiber.Map{
 				"version": getXrayVersion(),
 			},
 			"panelVersion": config.GetVersion(),

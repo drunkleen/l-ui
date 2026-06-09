@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	"net/http"
 	"testing"
 	"time"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 func TestAgentShutdownTimeoutIs15Seconds(t *testing.T) {
@@ -26,11 +27,10 @@ func TestAgentShutdownTimeoutIs15Seconds(t *testing.T) {
 }
 
 func TestAgentStopWithMockServer(t *testing.T) {
+	app := fiber.New()
 	s := &AgentServer{
 		cancel: func() {},
-		httpServer: &http.Server{
-			Handler: http.NotFoundHandler(),
-		},
+		app:    app,
 	}
 
 	done := make(chan error, 1)
@@ -48,13 +48,13 @@ func TestAgentStopWithMockServer(t *testing.T) {
 	}
 }
 
-func TestAgentStopWithNilHttpServer(t *testing.T) {
+func TestAgentStopWithNilApp(t *testing.T) {
 	s := &AgentServer{
 		cancel: func() {},
 	}
 
 	err := s.Stop()
 	if err != nil {
-		t.Fatalf("Stop() with nil httpServer returned error: %v", err)
+		t.Fatalf("Stop() with nil app returned error: %v", err)
 	}
 }

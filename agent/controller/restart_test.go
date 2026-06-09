@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 func TestRestartController_RestartAgent_ReturnsImmediately(t *testing.T) {
@@ -12,25 +14,32 @@ func TestRestartController_RestartAgent_ReturnsImmediately(t *testing.T) {
 	restartAgentFn = func() {}
 	defer func() { restartAgentFn = orig }()
 
-	c, w := newTestContext("POST", "/api/v1/restart", "")
 	ctrl := &RestartController{}
-	ctrl.RestartAgent(c)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	app := fiber.New()
+	app.Post("/api/v1/restart", ctrl.RestartAgent)
+
+	resp, err := app.Test(testRequest("POST", "/api/v1/restart", ""))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
 	}
-	var resp struct {
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, resp.Body)
+	}
+	var result struct {
 		Success bool   `json:"success"`
 		Msg     string `json:"msg"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if !resp.Success {
+	if !result.Success {
 		t.Fatal("expected success=true")
 	}
-	if resp.Msg != "restarting" {
-		t.Fatalf("expected msg 'restarting', got %q", resp.Msg)
+	if result.Msg != "restarting" {
+		t.Fatalf("expected msg 'restarting', got %q", result.Msg)
 	}
 }
 
@@ -39,25 +48,32 @@ func TestRestartController_RestartXray_Success(t *testing.T) {
 	restartXrayFn = func() error { return nil }
 	defer func() { restartXrayFn = orig }()
 
-	c, w := newTestContext("POST", "/api/v1/xray/restart", "")
 	ctrl := &RestartController{}
-	ctrl.RestartXray(c)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	app := fiber.New()
+	app.Post("/api/v1/xray/restart", ctrl.RestartXray)
+
+	resp, err := app.Test(testRequest("POST", "/api/v1/xray/restart", ""))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
 	}
-	var resp struct {
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, resp.Body)
+	}
+	var result struct {
 		Success bool   `json:"success"`
 		Status  string `json:"status"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if !resp.Success {
+	if !result.Success {
 		t.Fatal("expected success=true")
 	}
-	if resp.Status != "ok" {
-		t.Fatalf("expected status 'ok', got %q", resp.Status)
+	if result.Status != "ok" {
+		t.Fatalf("expected status 'ok', got %q", result.Status)
 	}
 }
 
@@ -66,28 +82,35 @@ func TestRestartController_RestartXray_Error(t *testing.T) {
 	restartXrayFn = func() error { return errors.New("systemctl not found") }
 	defer func() { restartXrayFn = orig }()
 
-	c, w := newTestContext("POST", "/api/v1/xray/restart", "")
 	ctrl := &RestartController{}
-	ctrl.RestartXray(c)
 
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d: %s", w.Code, w.Body.String())
+	app := fiber.New()
+	app.Post("/api/v1/xray/restart", ctrl.RestartXray)
+
+	resp, err := app.Test(testRequest("POST", "/api/v1/xray/restart", ""))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
 	}
-	var resp struct {
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", resp.StatusCode, resp.Body)
+	}
+	var result struct {
 		Success bool   `json:"success"`
 		Status  string `json:"status"`
 		Error   string `json:"error"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if resp.Success {
+	if result.Success {
 		t.Fatal("expected success=false on error")
 	}
-	if resp.Status != "error" {
-		t.Fatalf("expected status 'error', got %q", resp.Status)
+	if result.Status != "error" {
+		t.Fatalf("expected status 'error', got %q", result.Status)
 	}
-	if resp.Error == "" {
+	if result.Error == "" {
 		t.Fatal("expected error message in response")
 	}
 }
@@ -97,18 +120,25 @@ func TestRestartController_RestartAgent_ResponseStructure(t *testing.T) {
 	restartAgentFn = func() {}
 	defer func() { restartAgentFn = orig }()
 
-	c, w := newTestContext("POST", "/api/v1/restart", "")
 	ctrl := &RestartController{}
-	ctrl.RestartAgent(c)
 
-	var resp struct {
+	app := fiber.New()
+	app.Post("/api/v1/restart", ctrl.RestartAgent)
+
+	resp, err := app.Test(testRequest("POST", "/api/v1/restart", ""))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
 		Success bool   `json:"success"`
 		Msg     string `json:"msg"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if !resp.Success {
+	if !result.Success {
 		t.Fatal("expected success=true")
 	}
 }

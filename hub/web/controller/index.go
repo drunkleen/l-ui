@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"net/http"
 	"text/template"
 	"time"
 
@@ -10,17 +9,15 @@ import (
 	"github.com/drunkleen/l-ui/hub/web/service"
 	"github.com/drunkleen/l-ui/hub/web/session"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
-// LoginForm represents the login request structure.
 type LoginForm struct {
 	Username      string `json:"username" form:"username"`
 	Password      string `json:"password" form:"password"`
 	TwoFactorCode string `json:"twoFactorCode" form:"twoFactorCode"`
 }
 
-// IndexController handles the main index and login-related routes.
 type IndexController struct {
 	BaseController
 
@@ -29,48 +26,44 @@ type IndexController struct {
 	tgbot          service.Tgbot
 }
 
-// NewIndexController creates a new IndexController and initializes its routes.
-func NewIndexController(g *gin.RouterGroup) *IndexController {
+func NewIndexController(router fiber.Router) *IndexController {
 	a := &IndexController{}
-	a.initRouter(g)
+	a.initRouter(router)
 	return a
 }
 
-// initRouter sets up the routes for index, login, logout, and two-factor authentication.
-func (a *IndexController) initRouter(g *gin.RouterGroup) {
-	g.GET("/", a.index)
-	g.GET("/csrf-token", a.csrfToken)
+func (a *IndexController) initRouter(router fiber.Router) {
+	router.Get("/", a.index)
+	router.Get("/csrf-token", a.csrfToken)
 
-	g.POST("/login", middleware.CSRFMiddleware(), a.login)
-	g.POST("/logout", middleware.CSRFMiddleware(), a.logout)
-	g.POST("/getTwoFactorEnable", middleware.CSRFMiddleware(), a.getTwoFactorEnable)
+	router.Post("/login", middleware.CSRFMiddleware(), a.login)
+	router.Post("/logout", middleware.CSRFMiddleware(), a.logout)
+	router.Post("/getTwoFactorEnable", middleware.CSRFMiddleware(), a.getTwoFactorEnable)
 }
 
-// index handles the root route, redirecting logged-in users to the panel or showing the login page.
-func (a *IndexController) index(c *gin.Context) {
+func (a *IndexController) index(c fiber.Ctx) error {
 	if session.IsLogin(c) {
-		c.Header("Cache-Control", "no-store")
-		c.Redirect(http.StatusTemporaryRedirect, c.GetString("base_path")+"panel/")
-		return
+		c.Set("Cache-Control", "no-store")
+		basePath, _ := c.Locals("base_path").(string)
+		return c.Redirect().Status(fiber.StatusTemporaryRedirect).To(basePath + "panel/")
 	}
-	serveDistPage(c, "login.html")
+	return serveDistPage(c, "login.html")
 }
 
-// login handles user authentication and session creation.
-func (a *IndexController) login(c *gin.Context) {
+func (a *IndexController) login(c fiber.Ctx) error {
 	var form LoginForm
 
-	if err := c.ShouldBind(&form); err != nil {
-		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.invalidFormData"))
-		return
+	if err := c.Bind().Body(&form); err != nil {
+		pureJsonMsg(c, fiber.StatusOK, false, I18nWeb(c, "pages.login.toasts.invalidFormData"))
+		return nil
 	}
 	if form.Username == "" {
-		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.emptyUsername"))
-		return
+		pureJsonMsg(c, fiber.StatusOK, false, I18nWeb(c, "pages.login.toasts.emptyUsername"))
+		return nil
 	}
 	if form.Password == "" {
-		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.emptyPassword"))
-		return
+		pureJsonMsg(c, fiber.StatusOK, false, I18nWeb(c, "pages.login.toasts.emptyPassword"))
+		return nil
 	}
 
 	remoteIP := getRemoteIp(c)
@@ -86,8 +79,8 @@ func (a *IndexController) login(c *gin.Context) {
 			Status:   service.LoginFail,
 			Reason:   reason,
 		})
-		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.wrongUsernameOrPassword"))
-		return
+		pureJsonMsg(c, fiber.StatusOK, false, I18nWeb(c, "pages.login.toasts.wrongUsernameOrPassword"))
+		return nil
 	}
 
 	user, checkErr := a.userService.CheckUser(form.Username, form.Password, form.TwoFactorCode)
@@ -106,8 +99,8 @@ func (a *IndexController) login(c *gin.Context) {
 			Status:   service.LoginFail,
 			Reason:   reason,
 		})
-		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.wrongUsernameOrPassword"))
-		return
+		pureJsonMsg(c, fiber.StatusOK, false, I18nWeb(c, "pages.login.toasts.wrongUsernameOrPassword"))
+		return nil
 	}
 
 	defaultLoginLimiter.registerSuccess(remoteIP, form.Username)
@@ -121,11 +114,12 @@ func (a *IndexController) login(c *gin.Context) {
 
 	if err := session.SetLoginUser(c, user); err != nil {
 		logger.Warning("Unable to save session:", err)
-		return
+		return nil
 	}
 
 	logger.Infof("%s logged in successfully", safeUser)
 	jsonMsg(c, I18nWeb(c, "pages.login.toasts.successLogin"), nil)
+	return nil
 }
 
 func loginFailureReason(err error) string {
@@ -135,7 +129,7 @@ func loginFailureReason(err error) string {
 	return "invalid credentials"
 }
 
-func (a *IndexController) logout(c *gin.Context) {
+func (a *IndexController) logout(c fiber.Ctx) error {
 	user := session.GetLoginUser(c)
 	if user != nil {
 		logger.Infof("%s logged out successfully", user.Username)
@@ -143,27 +137,24 @@ func (a *IndexController) logout(c *gin.Context) {
 	if err := session.ClearSession(c); err != nil {
 		logger.Warning("Unable to clear session on logout:", err)
 	}
-	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	c.Set("Cache-Control", "no-store")
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true})
 }
 
-// csrfToken returns the session CSRF token. Public — the login page
-// needs a token before authenticating.
-func (a *IndexController) csrfToken(c *gin.Context) {
+func (a *IndexController) csrfToken(c fiber.Ctx) error {
 	token, err := session.EnsureCSRFToken(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": err.Error()})
-		return
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"success": false, "msg": err.Error()})
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "obj": token})
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true, "obj": token})
 }
 
-// getTwoFactorEnable retrieves the current status of two-factor authentication.
-func (a *IndexController) getTwoFactorEnable(c *gin.Context) {
+func (a *IndexController) getTwoFactorEnable(c fiber.Ctx) error {
 	status, err := a.settingService.GetTwoFactorEnable()
 	if err != nil {
 		jsonMsg(c, "", err)
-		return
+		return nil
 	}
 	jsonObj(c, status, nil)
+	return nil
 }

@@ -8,9 +8,9 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"io"
 	"math/big"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/drunkleen/l-ui/internal/logger"
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 func init() {
@@ -73,15 +73,17 @@ func TestCertPush_Success(t *testing.T) {
 
 	body := mustMarshal(t, map[string]string{"certPEM": certPEM, "keyPEM": keyPEM})
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/certs", strings.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
+	app := fiber.New()
+	app.Post("/api/v1/certs", ctrl.Push)
 
-	ctrl.Push(c)
+	resp, err := app.Test(testRequest("POST", "/api/v1/certs", body))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, resp.Body)
 	}
 
 	certPath := filepath.Join(dir, certFile)
@@ -101,15 +103,17 @@ func TestCertPush_InvalidCertPEM(t *testing.T) {
 
 	body := mustMarshal(t, map[string]string{"certPEM": "invalid", "keyPEM": keyPEM})
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/certs", strings.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
+	app := fiber.New()
+	app.Post("/api/v1/certs", ctrl.Push)
 
-	ctrl.Push(c)
+	resp, err := app.Test(testRequest("POST", "/api/v1/certs", body))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", resp.StatusCode, resp.Body)
 	}
 }
 
@@ -119,44 +123,51 @@ func TestCertPush_InvalidKeyPEM(t *testing.T) {
 
 	body := mustMarshal(t, map[string]string{"certPEM": certPEM, "keyPEM": "invalid"})
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/certs", strings.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
+	app := fiber.New()
+	app.Post("/api/v1/certs", ctrl.Push)
 
-	ctrl.Push(c)
+	resp, err := app.Test(testRequest("POST", "/api/v1/certs", body))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", resp.StatusCode, resp.Body)
 	}
 }
 
 func TestCertPush_BadJSON(t *testing.T) {
 	ctrl, _ := setupCertTest(t)
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/certs", strings.NewReader(`{invalid`))
-	c.Request.Header.Set("Content-Type", "application/json")
+	app := fiber.New()
+	app.Post("/api/v1/certs", ctrl.Push)
 
-	ctrl.Push(c)
+	resp, err := app.Test(testRequest("POST", "/api/v1/certs", `{invalid`))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", resp.StatusCode, resp.Body)
 	}
 }
 
 func TestCertStatus_NoCertInstalled(t *testing.T) {
 	ctrl, _ := setupCertTest(t)
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/certs/status", nil)
+	app := fiber.New()
+	app.Get("/api/v1/certs/status", ctrl.Status)
 
-	ctrl.Status(c)
+	resp, err := app.Test(testRequest("GET", "/api/v1/certs/status", ""))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, resp.Body)
 	}
 }
 
@@ -168,22 +179,29 @@ func TestCertStatus_WithCert(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, certFile), []byte(certPEM), 0600)
 	os.WriteFile(filepath.Join(dir, keyFile), []byte(keyPEM), 0600)
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/certs/status", nil)
+	app := fiber.New()
+	app.Get("/api/v1/certs/status", ctrl.Status)
 
-	ctrl.Status(c)
+	resp, err := app.Test(testRequest("GET", "/api/v1/certs/status", ""))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, resp.Body)
 	}
 
-	body := w.Body.String()
-	if !strings.Contains(body, "test") {
-		t.Fatalf("response should contain subject 'test': %s", body)
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body: %v", err)
 	}
-	if !strings.Contains(body, "serial") {
-		t.Fatalf("response should contain serial: %s", body)
+	bodyStr := string(b)
+	if !strings.Contains(bodyStr, "test") {
+		t.Fatalf("response should contain subject 'test': %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "serial") {
+		t.Fatalf("response should contain serial: %s", bodyStr)
 	}
 }
 
@@ -193,13 +211,16 @@ func TestCertStatus_CorruptedCertFile(t *testing.T) {
 	os.MkdirAll(dir, 0700)
 	os.WriteFile(filepath.Join(dir, certFile), []byte("not a cert"), 0600)
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/certs/status", nil)
+	app := fiber.New()
+	app.Get("/api/v1/certs/status", ctrl.Status)
 
-	ctrl.Status(c)
+	resp, err := app.Test(testRequest("GET", "/api/v1/certs/status", ""))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, resp.Body)
 	}
 }

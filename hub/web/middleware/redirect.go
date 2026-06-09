@@ -1,37 +1,30 @@
 package middleware
 
 import (
-	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
-// RedirectMiddleware returns a Gin middleware that handles URL redirections.
-// It provides backward compatibility by redirecting old '/lui' paths to new '/panel' paths,
-// including API endpoints. The middleware performs permanent redirects (301) for SEO purposes.
-func RedirectMiddleware(basePath string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Redirect from old '/lui' path to '/panel'
+// RedirectMiddleware returns a middleware that handles URL redirections.
+func RedirectMiddleware(basePath string) fiber.Handler {
+	return func(c fiber.Ctx) error {
 		redirects := map[string]string{
 			"panel/API": "panel/api",
 			"lui/API":   "panel/api",
 			"lui":       "panel",
 		}
 
-		path := c.Request.URL.Path
+		path := c.Path()
 		for from, to := range redirects {
 			from, to = basePath+from, basePath+to
 
 			if strings.HasPrefix(path, from) {
 				newPath := to + path[len(from):]
-
-				c.Redirect(http.StatusMovedPermanently, newPath)
-				c.Abort()
-				return
+				return c.Redirect().Status(fiber.StatusMovedPermanently).To(newPath)
 			}
 		}
 
-		c.Next()
+		return c.Next()
 	}
 }

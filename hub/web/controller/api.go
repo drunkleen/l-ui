@@ -1,9 +1,7 @@
 package controller
 
 import (
-	"bytes"
 	"io"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,7 +14,7 @@ import (
 	"github.com/drunkleen/l-ui/hub/web/session"
 	"github.com/drunkleen/l-ui/internal/nodeauth"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 var nodeAuthReplay = struct {
@@ -24,7 +22,7 @@ var nodeAuthReplay = struct {
 	v map[string]int64
 }{v: map[string]int64{}}
 
-// APIController handles the main API routes for the l-ui panel, including inbounds and server management.
+// APIController handles the main API routes for the l-ui panel.
 type APIController struct {
 	BaseController
 	inboundController      *InboundController
@@ -37,72 +35,84 @@ type APIController struct {
 	Tgbot                  service.Tgbot
 }
 
-// NewAPIController creates a new APIController instance and initializes its routes.
-func NewAPIController(g *gin.RouterGroup, customGeo *service.CustomGeoService) *APIController {
+func NewAPIController(router fiber.Router, customGeo *service.CustomGeoService) *APIController {
 	a := &APIController{
 		registrationController: NewRegistrationController(),
 	}
-	a.initRouter(g, customGeo)
+	a.initRouter(router, customGeo)
 	return a
 }
 
-func (a *APIController) checkAPIAuth(c *gin.Context) {
-	auth := c.GetHeader("Authorization")
+func (a *APIController) checkAPIAuth(c fiber.Ctx) error {
+	auth := c.Get("Authorization")
 	if after, ok := strings.CutPrefix(auth, "Bearer "); ok {
 		tok := strings.TrimSpace(after)
 		if a.hasSignedAPIHeaders(c) && !a.apiTokenService.Match(tok) {
-			abortJSONError(c, http.StatusUnauthorized, service.NodeErrAuth, "invalid node credentials")
-			return
+			abortJSONError(c, fiber.StatusUnauthorized, service.NodeErrAuth, "invalid node credentials")
+			return nil
 		}
 		if a.hasSignedAPIHeaders(c) {
 			if a.apiTokenService.Match(tok) && a.verifySignedAPIRequest(c, tok) {
 				if u, err := a.userService.GetFirstUser(); err == nil {
 					session.SetAPIAuthUser(c, u)
 				}
-				c.Set("api_authed", true)
-				c.Next()
-				return
+				c.Locals("api_authed", true)
+				return c.Next()
 			}
 		} else if a.apiTokenService.Match(tok) {
 			if u, err := a.userService.GetFirstUser(); err == nil {
 				session.SetAPIAuthUser(c, u)
 			}
-			c.Set("api_authed", true)
-			c.Next()
-			return
+			c.Locals("api_authed", true)
+			return c.Next()
 		}
 	}
 	if !session.IsLogin(c) {
-		if c.GetHeader("X-Requested-With") == "XMLHttpRequest" {
-			c.AbortWithStatus(http.StatusUnauthorized)
-		} else {
-			c.AbortWithStatus(http.StatusNotFound)
+		if c.Get("X-Requested-With") == "XMLHttpRequest" {
+			return c.SendStatus(fiber.StatusUnauthorized)
 		}
-		return
+		return c.SendStatus(fiber.StatusNotFound)
 	}
-	c.Next()
+	return c.Next()
 }
 
-func abortJSONError(c *gin.Context, status int, code, msg string) {
+func abortJSONError(c fiber.Ctx, status int, code, msg string) {
 	if msg == "" {
-		msg = http.StatusText(status)
+		msg = strings.ToLower(strings.TrimPrefix(httpStatusText(status), " "))
 	}
-	c.AbortWithStatusJSON(status, entity.Msg{Success: false, Code: code, Msg: msg})
+	c.Status(status).JSON(entity.Msg{Success: false, Code: code, Msg: msg})
 }
 
-func (a *APIController) hasSignedAPIHeaders(c *gin.Context) bool {
-	return strings.TrimSpace(c.GetHeader(nodeauth.HeaderTimestamp)) != "" &&
-		strings.TrimSpace(c.GetHeader(nodeauth.HeaderNonce)) != "" &&
-		strings.TrimSpace(c.GetHeader(nodeauth.HeaderSignature)) != ""
+func httpStatusText(code int) string {
+	switch code {
+	case fiber.StatusUnauthorized:
+		return "Unauthorized"
+	case fiber.StatusNotFound:
+		return "Not Found"
+	case fiber.StatusInternalServerError:
+		return "Internal Server Error"
+	case fiber.StatusBadRequest:
+		return "Bad Request"
+	case fiber.StatusForbidden:
+		return "Forbidden"
+	default:
+		return "Unknown"
+	}
 }
 
-func (a *APIController) verifySignedAPIRequest(c *gin.Context, secret string) bool {
+func (a *APIController) hasSignedAPIHeaders(c fiber.Ctx) bool {
+	return strings.TrimSpace(c.Get(nodeauth.HeaderTimestamp)) != "" &&
+		strings.TrimSpace(c.Get(nodeauth.HeaderNonce)) != "" &&
+		strings.TrimSpace(c.Get(nodeauth.HeaderSignature)) != ""
+}
+
+func (a *APIController) verifySignedAPIRequest(c fiber.Ctx, secret string) bool {
 	if secret == "" {
 		return false
 	}
-	timestampStr := strings.TrimSpace(c.GetHeader(nodeauth.HeaderTimestamp))
-	nonce := strings.TrimSpace(c.GetHeader(nodeauth.HeaderNonce))
-	signature := strings.TrimSpace(c.GetHeader(nodeauth.HeaderSignature))
+	timestampStr := strings.TrimSpace(c.Get(nodeauth.HeaderTimestamp))
+	nonce := strings.TrimSpace(c.Get(nodeauth.HeaderNonce))
+	signature := strings.TrimSpace(c.Get(nodeauth.HeaderSignature))
 	if timestampStr == "" || nonce == "" || signature == "" {
 		return false
 	}
@@ -110,16 +120,12 @@ func (a *APIController) verifySignedAPIRequest(c *gin.Context, secret string) bo
 	if err != nil {
 		return false
 	}
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		return false
-	}
-	c.Request.Body = io.NopCloser(bytes.NewReader(body))
-	digest := strings.TrimSpace(c.GetHeader(nodeauth.HeaderBodyDigest))
+	body := c.Body()
+	digest := strings.TrimSpace(c.Get(nodeauth.HeaderBodyDigest))
 	if digest == "" || !strings.EqualFold(digest, nodeauth.BodyDigest(body)) {
 		return false
 	}
-	if !nodeauth.Verify(secret, c.Request.Method, c.Request.URL.Path, body, timestamp, nonce, signature, time.Now(), 5*time.Minute) {
+	if !nodeauth.Verify(secret, c.Method(), c.Path(), body, timestamp, nonce, signature, time.Now(), 5*time.Minute) {
 		return false
 	}
 	if !acceptReplay(secret, nonce, timestamp) {
@@ -148,14 +154,12 @@ func acceptReplay(secret, nonce string, ts int64) bool {
 	return true
 }
 
-// initRouter sets up the API routes for inbounds, server, and other endpoints.
-func (a *APIController) initRouter(g *gin.RouterGroup, customGeo *service.CustomGeoService) {
-	// Main API group
+func (a *APIController) initRouter(router fiber.Router, customGeo *service.CustomGeoService) {
 	apiPrefix := "/panel/api"
 	if global.GetWebServer() != nil && global.GetWebServer().ModeString() != "hub" {
 		apiPrefix = "/api/v1"
 	}
-	api := g.Group(apiPrefix)
+	api := router.Group(apiPrefix)
 	api.Use(a.checkAPIAuth)
 	api.Use(middleware.CSRFMiddleware())
 
@@ -171,30 +175,32 @@ func (a *APIController) initRouter(g *gin.RouterGroup, customGeo *service.Custom
 	server := api.Group("/server")
 	a.serverController = NewServerController(server)
 
-	// Nodes API — multi-panel management
+	// Nodes API
 	nodes := api.Group("/nodes")
 	a.nodeController = NewNodeController(nodes)
 	a.registrationController.nodeService = a.nodeController.nodeService
 
+
 	// Node registration management (auth required)
 	reg := api.Group("/node-registration")
-	reg.POST("/generate", a.registrationController.Generate)
-	reg.GET("/list", a.registrationController.List)
-	reg.DELETE("/:id", a.registrationController.Delete)
+	reg.Post("/generate", a.registrationController.Generate)
+	reg.Get("/list", a.registrationController.List)
+	reg.Delete("/:id", a.registrationController.Delete)
 
 	NewCustomGeoController(api.Group("/custom-geo"), customGeo)
 
 	// Node registration endpoint — no auth required (uses one-time token)
-	// Registered here (nodeService must be wired first) but outside any auth
-	// middleware so agents can call it before they have a secret.
 	regPath := apiPrefix + "/node-registration"
-	g.POST(regPath+"/register", a.registrationController.Register)
+	router.Post(regPath+"/register", a.registrationController.Register)
 
 	// Extra routes
-	api.POST("/backuptotgbot", a.BackuptoTgbot)
+	api.Post("/backuptotgbot", a.BackuptoTgbot)
 }
 
-// BackuptoTgbot sends a backup of the panel data to Telegram bot admins.
-func (a *APIController) BackuptoTgbot(c *gin.Context) {
+func (a *APIController) BackuptoTgbot(c fiber.Ctx) error {
 	a.Tgbot.SendBackupToAdmins()
+	return nil
 }
+
+// Ensure io is used (Body reader)
+var _ = io.ReadAll

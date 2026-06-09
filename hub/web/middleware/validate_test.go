@@ -2,14 +2,15 @@ package middleware
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
-
 	"github.com/drunkleen/l-ui/hub/web/entity"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 type sampleBody struct {
@@ -18,11 +19,10 @@ type sampleBody struct {
 	Tag      string `json:"tag" form:"tag"`
 }
 
-func newRouter(handler gin.HandlerFunc) *gin.Engine {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.POST("/submit", handler)
-	return r
+func newRouter(handler fiber.Handler) *fiber.App {
+	app := fiber.New()
+	app.Post("/submit", handler)
+	return app
 }
 
 func decodeMsg(t *testing.T, body string) entity.Msg {
@@ -35,7 +35,7 @@ func decodeMsg(t *testing.T, body string) entity.Msg {
 }
 
 func TestBindAndValidate_ValidPayloadPassesThrough(t *testing.T) {
-	r := newRouter(func(c *gin.Context) {
+	app := newRouter(func(c fiber.Ctx) error {
 		got, ok := BindAndValidate[sampleBody](c)
 		if !ok {
 			t.Fatalf("expected ok=true, got false (body should be valid)")
@@ -43,37 +43,44 @@ func TestBindAndValidate_ValidPayloadPassesThrough(t *testing.T) {
 		if got.Port != 443 || got.Protocol != "vless" || got.Tag != "inbound-443" {
 			t.Fatalf("decoded payload mismatch: %+v", got)
 		}
-		c.JSON(http.StatusOK, entity.Msg{Success: true, Msg: "ok"})
+		return c.Status(http.StatusOK).JSON(entity.Msg{Success: true, Msg: "ok"})
 	})
 
-	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/submit",
 		strings.NewReader(`{"port":443,"protocol":"vless","tag":"inbound-443"}`))
 	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d (body=%s)", rec.Code, http.StatusOK, rec.Body.String())
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
 	}
-	if msg := decodeMsg(t, rec.Body.String()); !msg.Success {
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body=%s)", resp.StatusCode, http.StatusOK, respBody(t, resp))
+	}
+	if msg := decodeMsg(t, respBody(t, resp)); !msg.Success {
 		t.Fatalf("expected Success=true; got %+v", msg)
 	}
 }
 
 func TestBindAndValidate_PortOutOfRangeIsRejected(t *testing.T) {
-	r := newRouter(func(c *gin.Context) {
+	app := newRouter(func(c fiber.Ctx) error {
 		if _, ok := BindAndValidate[sampleBody](c); ok {
 			t.Fatal("expected ok=false on invalid port; got true")
 		}
+		return nil
 	})
 
-	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/submit",
 		strings.NewReader(`{"port":70000,"protocol":"vless"}`))
 	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(rec, req)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	msg := decodeMsg(t, rec.Body.String())
+	msg := decodeMsg(t, respBody(t, resp))
 	if msg.Success {
 		t.Fatalf("expected Success=false; got %+v", msg)
 	}
@@ -94,19 +101,23 @@ func TestBindAndValidate_PortOutOfRangeIsRejected(t *testing.T) {
 }
 
 func TestBindAndValidate_ProtocolEnumIsRejected(t *testing.T) {
-	r := newRouter(func(c *gin.Context) {
+	app := newRouter(func(c fiber.Ctx) error {
 		if _, ok := BindAndValidate[sampleBody](c); ok {
 			t.Fatal("expected ok=false on invalid protocol; got true")
 		}
+		return nil
 	})
 
-	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/submit",
 		strings.NewReader(`{"port":443,"protocol":"unknown"}`))
 	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(rec, req)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	msg := decodeMsg(t, rec.Body.String())
+	msg := decodeMsg(t, respBody(t, resp))
 	payload, err := payloadFromObj(msg.Obj)
 	if err != nil {
 		t.Fatalf("payload extraction: %v", err)
@@ -123,19 +134,23 @@ func TestBindAndValidate_ProtocolEnumIsRejected(t *testing.T) {
 }
 
 func TestBindAndValidate_MalformedJSONReturnsMessageButNoIssues(t *testing.T) {
-	r := newRouter(func(c *gin.Context) {
+	app := newRouter(func(c fiber.Ctx) error {
 		if _, ok := BindAndValidate[sampleBody](c); ok {
 			t.Fatal("expected ok=false on malformed JSON; got true")
 		}
+		return nil
 	})
 
-	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/submit",
 		strings.NewReader(`{"port":}`))
 	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(rec, req)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	msg := decodeMsg(t, rec.Body.String())
+	msg := decodeMsg(t, respBody(t, resp))
 	if msg.Success {
 		t.Fatal("expected Success=false on malformed JSON")
 	}
@@ -152,7 +167,7 @@ func TestBindAndValidate_MalformedJSONReturnsMessageButNoIssues(t *testing.T) {
 }
 
 func TestBindAndValidateInto_PreservesPrePopulatedFields(t *testing.T) {
-	r := newRouter(func(c *gin.Context) {
+	app := newRouter(func(c fiber.Ctx) error {
 		dst := &sampleBody{Tag: "preset"}
 		if !BindAndValidateInto(c, dst) {
 			t.Fatal("expected ok=true; got false")
@@ -163,35 +178,52 @@ func TestBindAndValidateInto_PreservesPrePopulatedFields(t *testing.T) {
 		if dst.Port != 443 {
 			t.Fatalf("expected Port=443; got %d", dst.Port)
 		}
+		return c.SendStatus(http.StatusOK)
 	})
 
-	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/submit",
 		strings.NewReader(`{"port":443,"protocol":"trojan","tag":"inbound-443"}`))
 	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(rec, req)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 }
 
 func TestBindJSONAndValidate_RejectsFormEncodedBody(t *testing.T) {
-	r := newRouter(func(c *gin.Context) {
+	app := newRouter(func(c fiber.Ctx) error {
 		if _, ok := BindJSONAndValidate[sampleBody](c); ok {
 			t.Fatal("expected ok=false for form-encoded request to a JSON-only endpoint")
 		}
+		return nil
 	})
 
-	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/submit",
 		strings.NewReader("port=443&protocol=vless"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.ServeHTTP(rec, req)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	if msg := decodeMsg(t, rec.Body.String()); msg.Success {
+	if msg := decodeMsg(t, respBody(t, resp)); msg.Success {
 		t.Fatalf("expected Success=false; got %+v", msg)
 	}
+}
+
+func respBody(t *testing.T, resp *http.Response) string {
+	t.Helper()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	return string(b)
 }
 
 func payloadFromObj(obj any) (ValidationPayload, error) {

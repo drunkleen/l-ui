@@ -5,11 +5,11 @@ package sub
 import (
 	"context"
 	"crypto/tls"
-	"io"
 	"io/fs"
+	"mime"
 	"net"
-	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -21,13 +21,13 @@ import (
 	"github.com/drunkleen/l-ui/internal/logger"
 	"github.com/drunkleen/l-ui/internal/util/common"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 // Server represents the subscription server that serves subscription links and JSON configurations.
 type Server struct {
-	httpServer *http.Server
-	listener   net.Listener
+	app      *fiber.App
+	listener net.Listener
 
 	sub            *SUBController
 	settingService service.SettingService
@@ -45,15 +45,10 @@ func NewServer() *Server {
 	}
 }
 
-// initRouter configures the subscription server's Gin engine, middleware,
-// templates and static assets and returns the ready-to-use engine.
-func (s *Server) initRouter() (*gin.Engine, error) {
-	// Always run in release mode for the subscription server
-	gin.DefaultWriter = io.Discard
-	gin.DefaultErrorWriter = io.Discard
-	gin.SetMode(gin.ReleaseMode)
-
-	engine := gin.Default()
+// initRouter configures the subscription server's Fiber app, middleware, and
+// static assets and returns the ready-to-use app.
+func (s *Server) initRouter() (*fiber.App, error) {
+	app := fiber.New()
 
 	subDomain, err := s.settingService.GetSubDomain()
 	if err != nil {
@@ -61,7 +56,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	}
 
 	if subDomain != "" {
-		engine.Use(middleware.DomainValidatorMiddleware(subDomain))
+		app.Use(middleware.DomainValidatorMiddleware(subDomain))
 	}
 
 	LinksPath, err := s.settingService.GetSubPath()
@@ -96,8 +91,9 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		basePath += "/"
 	}
 	// logger.Debug("sub: Setting base_path to:", basePath)
-	engine.Use(func(c *gin.Context) {
-		c.Set("base_path", basePath)
+	app.Use(func(c fiber.Ctx) error {
+		c.Locals("base_path", basePath)
+		return c.Next()
 	})
 
 	Encrypt, err := s.settingService.GetSubEncrypt()
@@ -171,7 +167,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	}
 
 	// set per-request localizer from headers/cookies
-	engine.Use(locale.LocalizerMiddleware())
+	app.Use(locale.LocalizerMiddleware())
 
 	// Mount the Vite-built dist/assets/ so the subscription page's JS/CSS
 	// bundles load from `/assets/...`. Also mount the same FS under the
@@ -185,51 +181,89 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		linksPathForAssets = strings.TrimRight(LinksPath, "/") + "/assets"
 	}
 
-	var assetsFS http.FileSystem
+	// Try on-disk assets first, then fall back to embedded FS.
+	var assetDir string
+	var embedFS fs.FS
 	if _, err := os.Stat("hub/web/dist/assets"); err == nil {
-		assetsFS = http.FS(os.DirFS("hub/web/dist/assets"))
+		assetDir = "hub/web/dist/assets"
 	} else if subFS, err := fs.Sub(distFS, "dist/assets"); err == nil {
-		assetsFS = http.FS(subFS)
+		embedFS = subFS
 	} else {
 		logger.Error("sub: failed to mount embedded dist assets:", err)
 	}
 
-	if assetsFS != nil {
-		engine.StaticFS("/assets", assetsFS)
-		if linksPathForAssets != "/assets" {
-			engine.StaticFS(linksPathForAssets, assetsFS)
-		}
+	// registerStaticRoute mounts static files at the given prefix, using
+	// either the on-disk directory or a handler backed by the embedded FS.
+	registerStaticRoute := func(prefix string) {
+		prefixTrimmed := strings.TrimRight(prefix, "/")
+		app.Get(prefixTrimmed+"/*", func(c fiber.Ctx) error {
+			filePath := strings.TrimPrefix(c.Params("*"), "/")
+			if filePath == "" {
+				return c.Next()
+			}
+			if assetDir != "" {
+				fullPath := filepath.Join(assetDir, filePath)
+				if _, err := os.Stat(fullPath); err == nil {
+					return c.Res().SendFile(fullPath)
+				}
+				return c.Next()
+			}
+			if embedFS != nil {
+				data, err := fs.ReadFile(embedFS, filePath)
+				if err != nil {
+					return c.Next()
+				}
+				c.Set("Content-Type", mime.TypeByExtension(filepath.Ext(filePath)))
+				return c.Send(data)
+			}
+			return c.Next()
+		})
+	}
 
-		// Browser may resolve subpage assets relative to the request URL —
-		// /sub/<basePath>/<subId>/assets/... — so route those to the same FS.
-		if LinksPath != "/" {
-			engine.Use(func(c *gin.Context) {
-				path := c.Request.URL.Path
-				pathPrefix := strings.TrimRight(LinksPath, "/") + "/"
-				if strings.HasPrefix(path, pathPrefix) && strings.Contains(path, "/assets/") {
-					_, after, ok := strings.Cut(path, "/assets/")
-					if ok {
-						assetPath := after // +8 to skip "/assets/"
-						if assetPath != "" {
-							c.FileFromFS(assetPath, assetsFS)
-							c.Abort()
-							return
+	registerStaticRoute("/assets")
+	if linksPathForAssets != "/assets" {
+		registerStaticRoute(linksPathForAssets)
+	}
+
+	// Browser may resolve subpage assets relative to the request URL —
+	// /sub/<basePath>/<subId>/assets/... — so route those to the same FS.
+	if LinksPath != "/" {
+		pathPrefix := strings.TrimRight(LinksPath, "/") + "/"
+		app.Use(func(c fiber.Ctx) error {
+			path := c.Path()
+			if strings.HasPrefix(path, pathPrefix) && strings.Contains(path, "/assets/") {
+				_, after, ok := strings.Cut(path, "/assets/")
+				if ok {
+					assetPath := strings.TrimPrefix(after, "/")
+					if assetPath != "" {
+						if assetDir != "" {
+							fullPath := filepath.Join(assetDir, assetPath)
+							if _, err := os.Stat(fullPath); err == nil {
+								return c.Res().SendFile(fullPath)
+							}
+						}
+						if embedFS != nil {
+							data, err := fs.ReadFile(embedFS, assetPath)
+							if err == nil {
+								c.Set("Content-Type", mime.TypeByExtension(filepath.Ext(assetPath)))
+								return c.Send(data)
+							}
 						}
 					}
 				}
-				c.Next()
-			})
-		}
+			}
+			return c.Next()
+		})
 	}
 
-	g := engine.Group("/")
+	g := app.Group("/")
 
 	s.sub = NewSUBController(
 		g, LinksPath, JsonPath, ClashPath, subJsonEnable, subClashEnable, Encrypt, ShowInfo, RemarkModel, SubUpdates,
 		SubJsonFragment, SubJsonNoises, SubJsonMux, SubJsonRules, SubTitle, SubSupportUrl,
 		SubProfileUrl, SubAnnounce, SubEnableRouting, SubRoutingRules)
 
-	return engine, nil
+	return app, nil
 }
 
 // Start initializes and starts the subscription server with configured settings.
@@ -249,10 +283,11 @@ func (s *Server) Start() (err error) {
 		return nil
 	}
 
-	engine, err := s.initRouter()
+	app, err := s.initRouter()
 	if err != nil {
 		return err
 	}
+	s.app = app
 
 	certFile, err := s.settingService.GetSubCertFile()
 	if err != nil {
@@ -295,12 +330,8 @@ func (s *Server) Start() (err error) {
 	}
 	s.listener = listener
 
-	s.httpServer = &http.Server{
-		Handler: engine,
-	}
-
 	go func() {
-		s.httpServer.Serve(listener)
+		app.Server().Serve(listener)
 	}()
 
 	return nil
@@ -312,10 +343,10 @@ func (s *Server) Stop() error {
 
 	var err1 error
 	var err2 error
-	if s.httpServer != nil {
+	if s.app != nil {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer shutdownCancel()
-		err1 = s.httpServer.Shutdown(shutdownCtx)
+		err1 = s.app.Server().ShutdownWithContext(shutdownCtx)
 	}
 	if s.listener != nil {
 		err2 = s.listener.Close()

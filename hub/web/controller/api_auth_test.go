@@ -1,14 +1,14 @@
 package controller
 
 import (
-	"net/http/httptest"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/drunkleen/l-ui/internal/nodeauth"
-	"github.com/gin-gonic/gin"
+
+	"github.com/gofiber/fiber/v3"
+	"github.com/valyala/fasthttp"
 )
 
 func TestAcceptReplayRejectsDuplicateNonce(t *testing.T) {
@@ -35,18 +35,22 @@ func TestAcceptReplayScopesBySecret(t *testing.T) {
 }
 
 func TestVerifySignedAPIRequestRejectsBodyDigestMismatch(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	req := httptest.NewRequest("POST", "/api/v1/server/reinstall", strings.NewReader(`{"bundle":"x"}`))
-	c.Request = req
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.SetMethod("POST")
+	c.Request().SetRequestURI("/api/v1/server/reinstall")
+	c.Request().SetBody([]byte(`{"bundle":"x"}`))
+	c.Request().Header.SetContentType("application/json")
+
 	timestamp := time.Now().Unix()
 	nonce := "nonce-2"
 	secret := "secret-2"
-	req.Header.Set(nodeauth.HeaderTimestamp, strconv.FormatInt(timestamp, 10))
-	req.Header.Set(nodeauth.HeaderNonce, nonce)
-	req.Header.Set(nodeauth.HeaderSignature, nodeauth.Sign(secret, req.Method, req.URL.Path, []byte(`{"bundle":"x"}`), timestamp, nonce))
-	req.Header.Set(nodeauth.HeaderBodyDigest, "deadbeef")
+	c.Request().Header.Set(nodeauth.HeaderTimestamp, strconv.FormatInt(timestamp, 10))
+	c.Request().Header.Set(nodeauth.HeaderNonce, nonce)
+	c.Request().Header.Set(nodeauth.HeaderSignature, nodeauth.Sign(secret, "POST", "/api/v1/server/reinstall", []byte(`{"bundle":"x"}`), timestamp, nonce))
+	c.Request().Header.Set(nodeauth.HeaderBodyDigest, "deadbeef")
 
 	if (&APIController{}).verifySignedAPIRequest(c, secret) {
 		t.Fatal("expected digest mismatch to be rejected")
@@ -54,17 +58,21 @@ func TestVerifySignedAPIRequestRejectsBodyDigestMismatch(t *testing.T) {
 }
 
 func TestVerifySignedAPIRequestRejectsMissingBodyDigest(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	req := httptest.NewRequest("POST", "/api/v1/server/reinstall", strings.NewReader(`{"bundle":"x"}`))
-	c.Request = req
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.SetMethod("POST")
+	c.Request().SetRequestURI("/api/v1/server/reinstall")
+	c.Request().SetBody([]byte(`{"bundle":"x"}`))
+	c.Request().Header.SetContentType("application/json")
+
 	timestamp := time.Now().Unix()
 	nonce := "nonce-3"
 	secret := "secret-3"
-	req.Header.Set(nodeauth.HeaderTimestamp, strconv.FormatInt(timestamp, 10))
-	req.Header.Set(nodeauth.HeaderNonce, nonce)
-	req.Header.Set(nodeauth.HeaderSignature, nodeauth.Sign(secret, req.Method, req.URL.Path, []byte(`{"bundle":"x"}`), timestamp, nonce))
+	c.Request().Header.Set(nodeauth.HeaderTimestamp, strconv.FormatInt(timestamp, 10))
+	c.Request().Header.Set(nodeauth.HeaderNonce, nonce)
+	c.Request().Header.Set(nodeauth.HeaderSignature, nodeauth.Sign(secret, "POST", "/api/v1/server/reinstall", []byte(`{"bundle":"x"}`), timestamp, nonce))
 
 	if (&APIController{}).verifySignedAPIRequest(c, secret) {
 		t.Fatal("expected missing digest to be rejected")

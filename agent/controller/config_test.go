@@ -8,6 +8,7 @@ import (
 
 	agentdb "github.com/drunkleen/l-ui/agent/database"
 	"github.com/drunkleen/l-ui/agent/service"
+	"github.com/gofiber/fiber/v3"
 )
 
 func setupConfigControllerTestDB(t *testing.T) {
@@ -22,19 +23,26 @@ func setupConfigControllerTestDB(t *testing.T) {
 
 func TestConfigController_GetConfig_NoConfig(t *testing.T) {
 	setupConfigControllerTestDB(t)
-	c, w := newTestContext("GET", "/api/v1/config", "")
 	ctrl := &ConfigController{}
-	ctrl.GetConfig(c)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	app := fiber.New()
+	app.Get("/api/v1/config", ctrl.GetConfig)
+
+	resp, err := app.Test(testRequest("GET", "/api/v1/config", ""))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
 	}
-	var resp map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, resp.Body)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	if resp["obj"] != nil {
-		t.Fatalf("expected null obj, got %v", resp["obj"])
+	if body["obj"] != nil {
+		t.Fatalf("expected null obj, got %v", body["obj"])
 	}
 }
 
@@ -46,17 +54,24 @@ func TestConfigController_GetConfig_WithConfig(t *testing.T) {
 		json.RawMessage(`[{"email": "test@example.com"}]`),
 	)
 
-	c, w := newTestContext("GET", "/api/v1/config", "")
 	ctrl := &ConfigController{}
-	ctrl.GetConfig(c)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	app := fiber.New()
+	app.Get("/api/v1/config", ctrl.GetConfig)
+
+	resp, err := app.Test(testRequest("GET", "/api/v1/config", ""))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, resp.Body)
 	}
 	var env struct {
 		Obj service.NodeConfigData `json:"obj"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
 	if env.Obj.HubNodeID != "node-1" {
@@ -68,60 +83,88 @@ func TestConfigController_PushConfig_ValidRequest(t *testing.T) {
 	setupConfigControllerTestDB(t)
 
 	body := `{"hub_node_id": "node-2", "hub_endpoint": "https://hub2.example.com", "xray_config": {"port": 10086}, "client_list": [{"email": "a@b.com"}]}`
-	c, w := newTestContext("POST", "/api/v1/config/push", body)
 	ctrl := &ConfigController{}
-	ctrl.PushConfig(c)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	app := fiber.New()
+	app.Post("/api/v1/config/push", ctrl.PushConfig)
+
+	resp, err := app.Test(testRequest("POST", "/api/v1/config/push", body))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
 	}
-	var resp map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, resp.Body)
+	}
+	var result map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	if resp["success"] != true {
-		t.Fatalf("expected success true, got %v", resp["success"])
+	if result["success"] != true {
+		t.Fatalf("expected success true, got %v", result["success"])
 	}
 }
 
 func TestConfigController_PushConfig_InvalidJSON(t *testing.T) {
 	setupConfigControllerTestDB(t)
 
-	c, w := newTestContext("POST", "/api/v1/config/push", `not-json`)
 	ctrl := &ConfigController{}
-	ctrl.PushConfig(c)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
+	app := fiber.New()
+	app.Post("/api/v1/config/push", ctrl.PushConfig)
+
+	resp, err := app.Test(testRequest("POST", "/api/v1/config/push", `not-json`))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
 }
 
 func TestConfigController_PushConfig_EmptyBody(t *testing.T) {
 	setupConfigControllerTestDB(t)
 
-	c, w := newTestContext("POST", "/api/v1/config/push", "")
 	ctrl := &ConfigController{}
-	ctrl.PushConfig(c)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
+	app := fiber.New()
+	app.Post("/api/v1/config/push", ctrl.PushConfig)
+
+	resp, err := app.Test(testRequest("POST", "/api/v1/config/push", ""))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
 }
 
 func TestConfigController_ApplyConfig(t *testing.T) {
-	c, w := newTestContext("POST", "/api/v1/config/apply", "")
 	ctrl := &ConfigController{}
-	ctrl.ApplyConfig(c)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+	app := fiber.New()
+	app.Post("/api/v1/config/apply", ctrl.ApplyConfig)
+
+	resp, err := app.Test(testRequest("POST", "/api/v1/config/apply", ""))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
 	}
-	var resp map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var result map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	if resp["success"] != true {
-		t.Fatalf("expected success true, got %v", resp["success"])
+	if result["success"] != true {
+		t.Fatalf("expected success true, got %v", result["success"])
 	}
 }
 
@@ -129,25 +172,35 @@ func TestConfigController_PushConfig_UpdatesVersion(t *testing.T) {
 	setupConfigControllerTestDB(t)
 
 	body := `{"hub_node_id": "node-3", "hub_endpoint": "https://hub3.example.com"}`
-	c, w := newTestContext("POST", "/api/v1/config/push", body)
 	ctrl := &ConfigController{}
-	ctrl.PushConfig(c)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("first push expected 200, got %d", w.Code)
+	app := fiber.New()
+	app.Post("/api/v1/config/push", ctrl.PushConfig)
+
+	resp, err := app.Test(testRequest("POST", "/api/v1/config/push", body))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("first push expected 200, got %d", resp.StatusCode)
 	}
 
-	c2, w2 := newTestContext("POST", "/api/v1/config/push", body)
-	ctrl.PushConfig(c2)
-
-	if w2.Code != http.StatusOK {
-		t.Fatalf("second push expected 200, got %d", w2.Code)
+	resp2, err := app.Test(testRequest("POST", "/api/v1/config/push", body))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
 	}
-	var resp map[string]any
-	if err := json.Unmarshal(w2.Body.Bytes(), &resp); err != nil {
+	defer resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("second push expected 200, got %d", resp2.StatusCode)
+	}
+	var result map[string]any
+	if err := json.NewDecoder(resp2.Body).Decode(&result); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	obj, ok := resp["obj"].(map[string]any)
+	obj, ok := result["obj"].(map[string]any)
 	if !ok {
 		t.Fatal("expected obj in response")
 	}
@@ -169,33 +222,45 @@ func TestConfigController_PushConfig_AllFields(t *testing.T) {
 		"xray_config": {"inbounds": [{"port": 443}]},
 		"client_list": [{"email": "full@test.com", "enable": true}]
 	}`
-	c, w := newTestContext("POST", "/api/v1/config/push", body)
 	ctrl := &ConfigController{}
-	ctrl.PushConfig(c)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	app := fiber.New()
+	app.Post("/api/v1/config/push", ctrl.PushConfig)
+	app.Get("/api/v1/config", ctrl.GetConfig)
+
+	resp, err := app.Test(testRequest("POST", "/api/v1/config/push", body))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
 	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, resp.Body)
+	}
+
+	getResp, err := app.Test(testRequest("GET", "/api/v1/config", ""))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer getResp.Body.Close()
 
 	var env struct {
 		Obj service.NodeConfigData `json:"obj"`
 	}
-	getC, getW := newTestContext("GET", "/api/v1/config", "")
-	ctrl.GetConfig(getC)
-	if err := json.Unmarshal(getW.Body.Bytes(), &env); err != nil {
+	if err := json.NewDecoder(getResp.Body).Decode(&env); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	getResp := env.Obj
-	if getResp.HubNodeID != "node-full" {
-		t.Errorf("hub_node_id mismatch: got %q", getResp.HubNodeID)
+	getRespData := env.Obj
+	if getRespData.HubNodeID != "node-full" {
+		t.Errorf("hub_node_id mismatch: got %q", getRespData.HubNodeID)
 	}
-	if getResp.HubEndpoint != "https://full.hub.example.com" {
-		t.Errorf("hub_endpoint mismatch: got %q", getResp.HubEndpoint)
+	if getRespData.HubEndpoint != "https://full.hub.example.com" {
+		t.Errorf("hub_endpoint mismatch: got %q", getRespData.HubEndpoint)
 	}
-	if getResp.XrayConfig == nil {
+	if getRespData.XrayConfig == nil {
 		t.Error("expected xray_config in response")
 	}
-	if getResp.ClientList == nil {
+	if getRespData.ClientList == nil {
 		t.Error("expected client_list in response")
 	}
 }

@@ -6,39 +6,43 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 func TestHealthzReturnsOK(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	app := fiber.New()
+	app.Get("/healthz", Healthz)
 
-	Healthz(c)
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, resp.StatusCode)
 	}
 
-	var resp map[string]string
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+	var body map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
-	if resp["status"] != "ok" {
-		t.Fatalf("expected status 'ok', got %q", resp["status"])
+	if body["status"] != "ok" {
+		t.Fatalf("expected status 'ok', got %q", body["status"])
 	}
 }
 
 func TestHealthzContentType(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	app := fiber.New()
+	app.Get("/healthz", Healthz)
 
-	Healthz(c)
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	contentType := w.Header().Get("Content-Type")
+	contentType := resp.Header.Get("Content-Type")
 	if contentType == "" {
 		t.Fatal("expected Content-Type header to be set")
 	}

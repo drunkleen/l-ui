@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"net"
@@ -12,8 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/goccy/go-json"
+	"github.com/gofiber/fiber/v3"
 
 	"github.com/drunkleen/l-ui/internal/database"
 	"github.com/drunkleen/l-ui/internal/database/model"
@@ -1967,43 +1967,39 @@ type PageData struct {
 	Emails        []string
 }
 
-// ResolveRequest extracts scheme and host info from request/headers consistently.
 // ResolveRequest extracts scheme, host, and header information from an HTTP request.
-func (s *SubService) ResolveRequest(c *gin.Context) (scheme string, host string, hostWithPort string, hostHeader string) {
+func (s *SubService) ResolveRequest(c fiber.Ctx) (scheme string, host string, hostWithPort string, hostHeader string) {
 	// scheme
-	scheme = "http"
-	if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
-		scheme = "https"
-	}
+	scheme = c.Protocol()
 
 	// base host (no port)
-	if h, err := getHostFromXFH(c.GetHeader("X-Forwarded-Host")); err == nil && h != "" {
+	if h, err := getHostFromXFH(c.Get("X-Forwarded-Host")); err == nil && h != "" {
 		host = h
 	}
 	if host == "" {
-		host = c.GetHeader("X-Real-IP")
+		host = c.Get("X-Real-IP")
 	}
 	if host == "" {
 		var err error
-		host, _, err = net.SplitHostPort(c.Request.Host)
+		host, _, err = net.SplitHostPort(c.Hostname())
 		if err != nil {
-			host = c.Request.Host
+			host = c.Hostname()
 		}
 	}
 
 	// host:port for URLs
-	hostWithPort = c.GetHeader("X-Forwarded-Host")
+	hostWithPort = c.Get("X-Forwarded-Host")
 	if hostWithPort == "" {
-		hostWithPort = c.Request.Host
+		hostWithPort = c.Hostname()
 	}
 	if hostWithPort == "" {
 		hostWithPort = host
 	}
 
 	// header display host
-	hostHeader = c.GetHeader("X-Forwarded-Host")
+	hostHeader = c.Get("X-Forwarded-Host")
 	if hostHeader == "" {
-		hostHeader = c.GetHeader("X-Real-IP")
+		hostHeader = c.Get("X-Real-IP")
 	}
 	if hostHeader == "" {
 		hostHeader = host

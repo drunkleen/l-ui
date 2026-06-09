@@ -12,7 +12,7 @@ import (
 	"github.com/drunkleen/l-ui/hub/web/websocket"
 
 	"github.com/google/uuid"
-	ws "github.com/gorilla/websocket"
+	ws "github.com/fasthttp/websocket"
 )
 
 const (

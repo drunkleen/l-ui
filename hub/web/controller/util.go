@@ -3,7 +3,6 @@ package controller
 import (
 	"fmt"
 	"net"
-	"net/http"
 	"net/netip"
 	"path/filepath"
 	"runtime"
@@ -14,22 +13,21 @@ import (
 	"github.com/drunkleen/l-ui/hub/web/entity"
 	"github.com/drunkleen/l-ui/hub/web/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
-// getRemoteIp extracts the real IP address from the request headers or remote address.
-func getRemoteIp(c *gin.Context) string {
-	remoteIP, ok := extractTrustedIP(c.Request.RemoteAddr)
+func getRemoteIp(c fiber.Ctx) string {
+	remoteIP, ok := extractTrustedIP(c.IP())
 	if !ok {
 		return "unknown"
 	}
 
 	if isTrustedProxy(remoteIP) {
-		if ip, ok := extractTrustedIP(c.GetHeader("X-Real-IP")); ok {
+		if ip, ok := extractTrustedIP(c.Get("X-Real-IP")); ok {
 			return ip
 		}
 
-		if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
+		if xff := c.Get("X-Forwarded-For"); xff != "" {
 			for part := range strings.SplitSeq(xff, ",") {
 				if ip, ok := extractTrustedIP(part); ok {
 					return ip
@@ -41,8 +39,8 @@ func getRemoteIp(c *gin.Context) string {
 	return remoteIP
 }
 
-func isTrustedForwardedRequest(c *gin.Context) bool {
-	remoteIP, ok := extractTrustedIP(c.Request.RemoteAddr)
+func isTrustedForwardedRequest(c fiber.Ctx) bool {
+	remoteIP, ok := extractTrustedIP(c.IP())
 	return ok && isTrustedProxy(remoteIP)
 }
 
@@ -118,19 +116,17 @@ func parseIPCandidate(value string) (netip.Addr, bool) {
 	return ip.Unmap(), true
 }
 
-// jsonMsg sends a JSON response with a message and error status.
-func jsonMsg(c *gin.Context, msg string, err error) {
+func jsonMsg(c fiber.Ctx, msg string, err error) {
 	jsonMsgObj(c, msg, nil, err)
 }
 
-// jsonObj sends a JSON response with an object and error status.
-func jsonObj(c *gin.Context, obj any, err error) {
+func jsonObj(c fiber.Ctx, obj any, err error) {
 	jsonMsgObj(c, "", obj, err)
 }
 
-func requestErrorContext(c *gin.Context) string {
+func requestErrorContext(c fiber.Ctx) string {
 	handler, loc := callerOutsideUtil()
-	return fmt.Sprintf("[%s %s handler=%s %s]", c.Request.Method, c.Request.URL.Path, handler, loc)
+	return fmt.Sprintf("[%s %s handler=%s %s]", c.Method(), c.Path(), handler, loc)
 }
 
 func callerOutsideUtil() (string, string) {
@@ -154,8 +150,7 @@ func callerOutsideUtil() (string, string) {
 	return "unknown", "unknown"
 }
 
-// jsonMsgObj sends a JSON response with a message, object, and error status.
-func jsonMsgObj(c *gin.Context, msg string, obj any, err error) {
+func jsonMsgObj(c fiber.Ctx, msg string, obj any, err error) {
 	m := entity.Msg{
 		Obj: obj,
 	}
@@ -181,18 +176,16 @@ func jsonMsgObj(c *gin.Context, msg string, obj any, err error) {
 			logger.Warningf("%s %s %s", ctx, m.Msg, fail)
 		}
 	}
-	c.JSON(http.StatusOK, m)
+	c.Status(fiber.StatusOK).JSON(m)
 }
 
-// pureJsonMsg sends a pure JSON message response with custom status code.
-func pureJsonMsg(c *gin.Context, statusCode int, success bool, msg string) {
-	c.JSON(statusCode, entity.Msg{
+func pureJsonMsg(c fiber.Ctx, statusCode int, success bool, msg string) {
+	c.Status(statusCode).JSON(entity.Msg{
 		Success: success,
 		Msg:     msg,
 	})
 }
 
-// isAjax checks if the request is an AJAX request.
-func isAjax(c *gin.Context) bool {
-	return c.GetHeader("X-Requested-With") == "XMLHttpRequest"
+func isAjax(c fiber.Ctx) bool {
+	return c.Get("X-Requested-With") == "XMLHttpRequest"
 }

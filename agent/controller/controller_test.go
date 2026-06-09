@@ -10,137 +10,206 @@ import (
 	"time"
 
 	"github.com/drunkleen/l-ui/internal/nodeauth"
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
-func init() {
-	gin.SetMode(gin.TestMode)
-}
-
-func newTestContext(method, path, body string) (*gin.Context, *httptest.ResponseRecorder) {
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(method, path, strings.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
-	return c, w
+// testRequest creates a new HTTP request for testing.
+func testRequest(method, path, body string) *http.Request {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	return req
 }
 
 func TestAuthMiddleware_NoSecret(t *testing.T) {
-	c, w := newTestContext("GET", "/api/v1/status", "")
-	handler := AuthMiddleware("")
-	handler(c)
+	app := fiber.New()
+	app.Use(AuthMiddleware(""))
+	app.Get("/test", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).SendString("passed")
+	})
 
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", w.Code)
+	resp, err := app.Test(testRequest("GET", "/test", ""))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
 	}
-	var resp map[string]string
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", resp.StatusCode)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	if resp["error"] != "node not registered" {
-		t.Fatalf("expected 'node not registered', got %q", resp["error"])
+	if body["error"] != "node not registered" {
+		t.Fatalf("expected 'node not registered', got %q", body["error"])
 	}
 }
 
 func TestAuthMiddleware_MissingAuthHeader(t *testing.T) {
-	c, w := newTestContext("GET", "/api/v1/status", "")
-	handler := AuthMiddleware("s3cr3t")
-	handler(c)
+	app := fiber.New()
+	app.Use(AuthMiddleware("s3cr3t"))
+	app.Get("/test", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).SendString("passed")
+	})
 
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", w.Code)
+	resp, err := app.Test(testRequest("GET", "/test", ""))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", resp.StatusCode)
 	}
 }
 
 func TestAuthMiddleware_InvalidAuthHeader(t *testing.T) {
-	c, w := newTestContext("GET", "/api/v1/status", "")
-	c.Request.Header.Set(nodeauth.HeaderAuth, "NotBearer token")
-	handler := AuthMiddleware("s3cr3t")
-	handler(c)
+	app := fiber.New()
+	app.Use(AuthMiddleware("s3cr3t"))
+	app.Get("/test", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).SendString("passed")
+	})
 
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", w.Code)
+	req := testRequest("GET", "/test", "")
+	req.Header.Set(nodeauth.HeaderAuth, "NotBearer token")
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", resp.StatusCode)
 	}
 }
 
 func TestAuthMiddleware_EmptyToken(t *testing.T) {
-	c, w := newTestContext("GET", "/api/v1/status", "")
-	c.Request.Header.Set(nodeauth.HeaderAuth, "Bearer ")
-	handler := AuthMiddleware("s3cr3t")
-	handler(c)
+	app := fiber.New()
+	app.Use(AuthMiddleware("s3cr3t"))
+	app.Get("/test", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).SendString("passed")
+	})
 
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", w.Code)
+	req := testRequest("GET", "/test", "")
+	req.Header.Set(nodeauth.HeaderAuth, "Bearer ")
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", resp.StatusCode)
 	}
 }
 
 func TestAuthMiddleware_DirectTokenMatch(t *testing.T) {
-	c, w := newTestContext("GET", "/api/v1/status", "")
-	c.Request.Header.Set(nodeauth.HeaderAuth, "Bearer s3cr3t")
-	handler := AuthMiddleware("s3cr3t")
-	handler(c)
-	if c.IsAborted() {
-		t.Fatal("request should not be aborted")
+	app := fiber.New()
+	app.Use(AuthMiddleware("s3cr3t"))
+	app.Get("/test", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).SendString("passed")
+	})
+
+	req := testRequest("GET", "/test", "")
+	req.Header.Set(nodeauth.HeaderAuth, "Bearer s3cr3t")
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
 	}
-	_ = w
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 (not aborted), got %d", resp.StatusCode)
+	}
 }
 
 func TestAuthMiddleware_ValidSignature(t *testing.T) {
 	secret := "s3cr3t"
 	method := "POST"
-	path := "/api/v1/config/push"
+	path := "/test"
 	body := `{"hub_node_id": "node-1"}`
 	ts := time.Now().Unix()
 	nonce := "unique-nonce-456"
 	sig := nodeauth.Sign(secret, method, path, []byte(body), ts, nonce)
 
-	c, w := newTestContext(method, path, body)
-	c.Request.Header.Set(nodeauth.HeaderAuth, "Bearer some-other-token")
-	c.Request.Header.Set(nodeauth.HeaderTimestamp, fmt.Sprintf("%d", ts))
-	c.Request.Header.Set(nodeauth.HeaderNonce, nonce)
-	c.Request.Header.Set(nodeauth.HeaderSignature, sig)
+	app := fiber.New()
+	app.Use(AuthMiddleware(secret))
+	app.Post("/test", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).SendString("passed")
+	})
 
-	handler := AuthMiddleware(secret)
-	handler(c)
+	req := testRequest(method, path, body)
+	req.Header.Set(nodeauth.HeaderAuth, "Bearer some-other-token")
+	req.Header.Set(nodeauth.HeaderTimestamp, fmt.Sprintf("%d", ts))
+	req.Header.Set(nodeauth.HeaderNonce, nonce)
+	req.Header.Set(nodeauth.HeaderSignature, sig)
 
-	if c.IsAborted() {
-		t.Fatalf("expected valid signature to pass, got aborted with code %d", w.Code)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected valid signature to pass (200), got %d", resp.StatusCode)
 	}
 }
 
 func TestAuthMiddleware_ExpiredTimestamp(t *testing.T) {
 	secret := "s3cr3t"
 	method := "POST"
-	path := "/api/v1/config/push"
+	path := "/test"
 	body := `{"hub_node_id": "node-1"}`
 	ts := time.Now().Add(-10 * time.Minute).Unix()
 	nonce := "stale-nonce"
 	sig := nodeauth.Sign(secret, method, path, []byte(body), ts, nonce)
 
-	c, w := newTestContext(method, path, body)
-	c.Request.Header.Set(nodeauth.HeaderAuth, "Bearer some-other-token")
-	c.Request.Header.Set(nodeauth.HeaderTimestamp, fmt.Sprintf("%d", ts))
-	c.Request.Header.Set(nodeauth.HeaderNonce, nonce)
-	c.Request.Header.Set(nodeauth.HeaderSignature, sig)
+	app := fiber.New()
+	app.Use(AuthMiddleware(secret))
+	app.Post("/test", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).SendString("passed")
+	})
 
-	handler := AuthMiddleware(secret)
-	handler(c)
+	req := testRequest(method, path, body)
+	req.Header.Set(nodeauth.HeaderAuth, "Bearer some-other-token")
+	req.Header.Set(nodeauth.HeaderTimestamp, fmt.Sprintf("%d", ts))
+	req.Header.Set(nodeauth.HeaderNonce, nonce)
+	req.Header.Set(nodeauth.HeaderSignature, sig)
 
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 for expired timestamp, got %d", w.Code)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for expired timestamp, got %d", resp.StatusCode)
 	}
 }
 
 func TestAuthMiddleware_MissingSignatureHeaders(t *testing.T) {
 	secret := "s3cr3t"
-	c, w := newTestContext("POST", "/api/v1/config/push", `{"foo": "bar"}`)
-	c.Request.Header.Set(nodeauth.HeaderAuth, "Bearer some-other-token")
 
-	handler := AuthMiddleware(secret)
-	handler(c)
+	app := fiber.New()
+	app.Use(AuthMiddleware(secret))
+	app.Post("/test", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).SendString("passed")
+	})
 
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 for missing signature headers, got %d", w.Code)
+	req := testRequest("POST", "/test", `{"foo": "bar"}`)
+	req.Header.Set(nodeauth.HeaderAuth, "Bearer some-other-token")
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for missing signature headers, got %d", resp.StatusCode)
 	}
 }
 

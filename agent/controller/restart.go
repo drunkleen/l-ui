@@ -1,12 +1,11 @@
 package controller
 
 import (
-	"net/http"
 	"os"
 	"os/exec"
 	"syscall"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 var restartAgentFn = restartAgent
@@ -24,9 +23,10 @@ func restartXray() error {
 	return exec.Command("systemctl", "restart", "xray").Run()
 }
 
-func (s *RestartController) RestartAgent(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "restarting"})
+func (s *RestartController) RestartAgent(c fiber.Ctx) error {
+	_ = c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true, "msg": "restarting"})
 	go restartAgentFn()
+	return nil
 }
 
 type restartXrayResponse struct {
@@ -35,14 +35,13 @@ type restartXrayResponse struct {
 	Error   string `json:"error,omitempty"`
 }
 
-func (s *RestartController) RestartXray(c *gin.Context) {
+func (s *RestartController) RestartXray(c fiber.Ctx) error {
 	if err := restartXrayFn(); err != nil {
-		c.JSON(http.StatusInternalServerError, restartXrayResponse{
+		return c.Status(fiber.StatusInternalServerError).JSON(restartXrayResponse{
 			Success: false,
 			Status:  "error",
 			Error:   err.Error(),
 		})
-		return
 	}
-	c.JSON(http.StatusOK, restartXrayResponse{Success: true, Status: "ok"})
+	return c.Status(fiber.StatusOK).JSON(restartXrayResponse{Success: true, Status: "ok"})
 }

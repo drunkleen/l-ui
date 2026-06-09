@@ -1,19 +1,16 @@
 package controller
 
 import (
-	"net/http"
-
 	"github.com/drunkleen/l-ui/agent/service"
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 var sysSvc = service.NewSystemService()
 
-func (s *MetricsController) GetMetrics(c *gin.Context) {
+func (s *MetricsController) GetMetrics(c fiber.Ctx) error {
 	metrics, err := sysSvc.GetMetrics()
 	if err != nil {
-		abortJSONError(c, http.StatusInternalServerError, err.Error())
-		return
+		return abortJSONError(c, fiber.StatusInternalServerError, err.Error())
 	}
-	c.JSON(http.StatusOK, metrics)
+	return c.Status(fiber.StatusOK).JSON(metrics)
 }

@@ -2,21 +2,19 @@ package controller
 
 import (
 	"encoding/json"
-	"net/http"
 
 	"github.com/drunkleen/l-ui/agent/service"
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 var cfgSvc = service.NewConfigService()
 
-func (s *ConfigController) GetConfig(c *gin.Context) {
+func (s *ConfigController) GetConfig(c fiber.Ctx) error {
 	cfg, err := cfgSvc.GetConfig()
 	if err != nil {
-		abortJSONError(c, http.StatusInternalServerError, err.Error())
-		return
+		return abortJSONError(c, fiber.StatusInternalServerError, err.Error())
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "obj": cfg})
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true, "obj": cfg})
 }
 
 type pushConfigRequest struct {
@@ -26,24 +24,22 @@ type pushConfigRequest struct {
 	ClientList  json.RawMessage `json:"client_list"`
 }
 
-func (s *ConfigController) PushConfig(c *gin.Context) {
+func (s *ConfigController) PushConfig(c fiber.Ctx) error {
 	var req pushConfigRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		abortJSONError(c, http.StatusBadRequest, "invalid request body")
-		return
+	if err := c.Bind().JSON(&req); err != nil {
+		return abortJSONError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 	if err := cfgSvc.PushConfig(req.HubNodeID, req.HubEndpoint, req.XrayConfig, req.ClientList); err != nil {
-		abortJSONError(c, http.StatusInternalServerError, err.Error())
-		return
+		return abortJSONError(c, fiber.StatusInternalServerError, err.Error())
 	}
-	c.JSON(http.StatusOK, gin.H{
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"success": true,
-		"obj": gin.H{
+		"obj": fiber.Map{
 			"config_version": cfgSvc.GetConfigVersion(),
 		},
 	})
 }
 
-func (s *ConfigController) ApplyConfig(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "config applied"})
+func (s *ConfigController) ApplyConfig(c fiber.Ctx) error {
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"success": true, "msg": "config applied"})
 }

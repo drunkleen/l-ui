@@ -1,24 +1,22 @@
 package controller
 
 import (
-	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/drunkleen/l-ui/agent/service"
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 var logSvc = service.NewLogService()
 
-func (s *LogsController) TailLog(c *gin.Context) {
+func (s *LogsController) TailLog(c fiber.Ctx) error {
 	logPath := c.Query("path")
 	if logPath == "" {
-		abortJSONError(c, http.StatusBadRequest, "path query parameter is required")
-		return
+		return abortJSONError(c, fiber.StatusBadRequest, "path query parameter is required")
 	}
 
-	linesStr := c.DefaultQuery("lines", "50")
+	linesStr := c.Query("lines", "50")
 	tailLines, err := strconv.Atoi(linesStr)
 	if err != nil || tailLines <= 0 {
 		tailLines = 50
@@ -29,14 +27,13 @@ func (s *LogsController) TailLog(c *gin.Context) {
 
 	lines, err := logSvc.TailLog(logPath, tailLines)
 	if err != nil {
-		abortJSONError(c, http.StatusInternalServerError, "failed to read log: "+err.Error())
-		return
+		return abortJSONError(c, fiber.StatusInternalServerError, "failed to read log: "+err.Error())
 	}
 	if lines == nil {
 		lines = []string{}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"success": true,
 		"obj":     strings.Join(lines, "\n"),
 	})

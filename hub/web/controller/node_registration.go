@@ -2,7 +2,6 @@ package controller
 
 import (
 	"errors"
-	"net/http"
 	"strconv"
 	"time"
 
@@ -11,12 +10,12 @@ import (
 	"github.com/drunkleen/l-ui/internal/database/model"
 	"github.com/drunkleen/l-ui/internal/util/random"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 type RegistrationController struct {
 	registrationService service.RegistrationService
-	nodeService         service.NodeService
+	nodeService         *service.NodeService
 }
 
 func NewRegistrationController() *RegistrationController {
@@ -29,11 +28,11 @@ type generateTokenForm struct {
 	TTLMinutes  int    `json:"ttlMinutes" form:"ttlMinutes"`
 }
 
-func (a *RegistrationController) Generate(c *gin.Context) {
+func (a *RegistrationController) Generate(c fiber.Ctx) error {
 	var form generateTokenForm
-	if err := c.ShouldBind(&form); err != nil {
+	if err := c.Bind().Body(&form); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	ttl := time.Duration(form.TTLMinutes) * time.Minute
 	if ttl <= 0 {
@@ -42,13 +41,14 @@ func (a *RegistrationController) Generate(c *gin.Context) {
 	token, err := a.registrationService.GenerateToken(form.NodeName, form.NodeAddress, ttl)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
-	c.JSON(http.StatusOK, entity.Msg{
+	c.Status(fiber.StatusOK).JSON(entity.Msg{
 		Success: true,
 		Msg:     "registration token generated",
 		Obj:     token,
 	})
+	return nil
 }
 
 type registerForm struct {
@@ -63,27 +63,27 @@ type registerResponse struct {
 	APIToken string `json:"apiToken"`
 }
 
-func (a *RegistrationController) Register(c *gin.Context) {
-	auth := c.GetHeader("Authorization")
+func (a *RegistrationController) Register(c fiber.Ctx) error {
+	auth := c.Get("Authorization")
 	if auth == "" {
-		c.JSON(http.StatusUnauthorized, entity.Msg{Success: false, Msg: "authorization header is required"})
-		return
+		c.Status(fiber.StatusUnauthorized).JSON(entity.Msg{Success: false, Msg: "authorization header is required"})
+		return nil
 	}
 
 	var form registerForm
-	if err := c.ShouldBindJSON(&form); err != nil {
+	if err := c.Bind().JSON(&form); err != nil {
 		jsonMsg(c, "invalid registration payload", err)
-		return
+		return nil
 	}
 
 	regToken, err := a.registrationService.ValidateToken(auth)
 	if err != nil {
-		status := http.StatusForbidden
+		status := fiber.StatusForbidden
 		if errors.Is(err, service.ErrTokenNotFound) {
-			status = http.StatusNotFound
+			status = fiber.StatusNotFound
 		}
-		c.JSON(status, entity.Msg{Success: false, Msg: err.Error()})
-		return
+		c.Status(status).JSON(entity.Msg{Success: false, Msg: err.Error()})
+		return nil
 	}
 
 	nodeName := form.Name
@@ -113,15 +113,15 @@ func (a *RegistrationController) Register(c *gin.Context) {
 	}
 	if err := a.nodeService.Create(node); err != nil {
 		jsonMsg(c, "failed to create node", err)
-		return
+		return nil
 	}
 
 	if err := a.registrationService.ConsumeToken(auth, node.Id); err != nil {
 		jsonMsg(c, "failed to consume token", err)
-		return
+		return nil
 	}
 
-	c.JSON(http.StatusOK, entity.Msg{
+	c.Status(fiber.StatusOK).JSON(entity.Msg{
 		Success: true,
 		Msg:     "node registered successfully",
 		Obj: registerResponse{
@@ -129,26 +129,29 @@ func (a *RegistrationController) Register(c *gin.Context) {
 			APIToken: apiToken,
 		},
 	})
+	return nil
 }
 
-func (a *RegistrationController) List(c *gin.Context) {
+func (a *RegistrationController) List(c fiber.Ctx) error {
 	tokens, err := a.registrationService.ListTokens()
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonObj(c, tokens, nil)
+	return nil
 }
 
-func (a *RegistrationController) Delete(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+func (a *RegistrationController) Delete(c fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	if err := a.registrationService.DeleteToken(id); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.delete"), nil)
+	return nil
 }

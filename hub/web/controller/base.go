@@ -1,43 +1,41 @@
-// Package controller provides HTTP request handlers and controllers for the l-ui web management panel.
-// It handles routing, authentication, and API endpoints for managing Xray inbounds, settings, and more.
 package controller
 
 import (
-	"net/http"
-
 	"github.com/drunkleen/l-ui/internal/logger"
 	"github.com/drunkleen/l-ui/hub/web/locale"
 	"github.com/drunkleen/l-ui/hub/web/session"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
-// BaseController provides common functionality for all controllers, including authentication checks.
+// BaseController provides common functionality for all controllers.
 type BaseController struct{}
 
-// checkLogin is a middleware that verifies user authentication and handles unauthorized access.
-func (a *BaseController) checkLogin(c *gin.Context) {
+func (a *BaseController) checkLogin(c fiber.Ctx) error {
 	if !session.IsLogin(c) {
 		if isAjax(c) {
-			pureJsonMsg(c, http.StatusUnauthorized, false, I18nWeb(c, "pages.login.loginAgain"))
+			pureJsonMsg(c, fiber.StatusUnauthorized, false, I18nWeb(c, "pages.login.loginAgain"))
 		} else {
-			c.Header("Cache-Control", "no-store")
-			c.Redirect(http.StatusTemporaryRedirect, c.GetString("base_path"))
+			c.Set("Cache-Control", "no-store")
+			basePath, _ := c.Locals("base_path").(string)
+			return c.Redirect().Status(fiber.StatusTemporaryRedirect).To(basePath)
 		}
-		c.Abort()
-	} else {
-		c.Next()
+		return nil
 	}
+	return c.Next()
 }
 
-// I18nWeb retrieves an internationalized message for the web interface based on the current locale.
-func I18nWeb(c *gin.Context, name string, params ...string) string {
-	anyfunc, funcExists := c.Get("I18n")
-	if !funcExists {
-		logger.Warning("I18n function not exists in gin context!")
+func I18nWeb(c fiber.Ctx, name string, params ...string) string {
+	anyfunc := c.Locals("I18n")
+	if anyfunc == nil {
+		logger.Warning("I18n function not exists in fiber context!")
 		return ""
 	}
-	i18nFunc, _ := anyfunc.(func(i18nType locale.I18nType, key string, keyParams ...string) string)
+	i18nFunc, ok := anyfunc.(func(i18nType locale.I18nType, key string, keyParams ...string) string)
+	if !ok {
+		logger.Warning("I18n function type assertion failed!")
+		return ""
+	}
 	msg := i18nFunc(locale.Web, name, params...)
 	return msg
 }

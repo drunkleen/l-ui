@@ -1,94 +1,124 @@
 package middleware
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/drunkleen/l-ui/hub/web/session"
 
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
+	fiberSession "github.com/gofiber/fiber/v3/middleware/session"
 )
 
 func TestCSRFMiddlewareAllowsSafeMethods(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.Use(CSRFMiddleware())
-	router.GET("/safe", func(c *gin.Context) {
-		c.String(http.StatusOK, "ok")
+	app := fiber.New()
+	app.Use(CSRFMiddleware())
+	app.Get("/safe", func(c fiber.Ctx) error {
+		return c.Status(http.StatusOK).SendString("ok")
 	})
 
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/safe", nil)
-	router.ServeHTTP(rec, req)
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/safe", nil))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 }
 
 func TestCSRFMiddlewareRejectsMissingTokenAndAcceptsValidToken(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	store := cookie.NewStore([]byte("01234567890123456789012345678901"))
-	router.Use(sessions.Sessions("l-ui", store))
-	router.GET("/token", func(c *gin.Context) {
+	app := fiber.New()
+
+	cfg := fiberSession.Config{
+		CookieHTTPOnly: true,
+		CookieSameSite: "Lax",
+		CookieSecure:   false,
+		CookiePath:     "/",
+	}
+	cfg.Extractor = extractors.FromCookie("l-ui")
+	handler, _ := fiberSession.NewWithStore(cfg)
+	app.Use(handler)
+
+	app.Get("/token", func(c fiber.Ctx) error {
 		token, err := session.EnsureCSRFToken(c)
 		if err != nil {
 			t.Fatal(err)
 		}
-		c.String(http.StatusOK, token)
+		return c.Status(http.StatusOK).SendString(token)
 	})
-	router.POST("/submit", CSRFMiddleware(), func(c *gin.Context) {
-		c.String(http.StatusOK, "ok")
+	app.Post("/submit", CSRFMiddleware(), func(c fiber.Ctx) error {
+		return c.Status(http.StatusOK).SendString("ok")
 	})
 
-	tokenRec := httptest.NewRecorder()
-	tokenReq := httptest.NewRequest(http.MethodGet, "/token", nil)
-	router.ServeHTTP(tokenRec, tokenReq)
-	if tokenRec.Code != http.StatusOK {
-		t.Fatalf("token status = %d, want %d", tokenRec.Code, http.StatusOK)
+	// Get CSRF token
+	tokenResp, err := app.Test(httptest.NewRequest(http.MethodGet, "/token", nil))
+	if err != nil {
+		t.Fatalf("token request failed: %v", err)
 	}
-	cookies := tokenRec.Result().Cookies()
-	token := tokenRec.Body.String()
+	defer tokenResp.Body.Close()
 
-	missingRec := httptest.NewRecorder()
+	if tokenResp.StatusCode != http.StatusOK {
+		t.Fatalf("token status = %d, want %d", tokenResp.StatusCode, http.StatusOK)
+	}
+	cookies := tokenResp.Cookies()
+	tokenBytes, err := io.ReadAll(tokenResp.Body)
+	if err != nil {
+		t.Fatalf("read token body: %v", err)
+	}
+	token := strings.TrimSpace(string(tokenBytes))
+
+	// Missing token should be rejected
 	missingReq := httptest.NewRequest(http.MethodPost, "/submit", nil)
 	for _, cookie := range cookies {
 		missingReq.AddCookie(cookie)
 	}
-	router.ServeHTTP(missingRec, missingReq)
-	if missingRec.Code != http.StatusForbidden {
-		t.Fatalf("missing token status = %d, want %d", missingRec.Code, http.StatusForbidden)
+	missingResp, err := app.Test(missingReq)
+	if err != nil {
+		t.Fatalf("missing token request failed: %v", err)
+	}
+	defer missingResp.Body.Close()
+
+	if missingResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("missing token status = %d, want %d", missingResp.StatusCode, http.StatusForbidden)
 	}
 
-	validRec := httptest.NewRecorder()
+	// Valid token should be accepted
 	validReq := httptest.NewRequest(http.MethodPost, "/submit", nil)
 	for _, cookie := range cookies {
 		validReq.AddCookie(cookie)
 	}
 	validReq.Header.Set(session.CSRFHeaderName, token)
-	router.ServeHTTP(validRec, validReq)
-	if validRec.Code != http.StatusOK {
-		t.Fatalf("valid token status = %d, want %d", validRec.Code, http.StatusOK)
+	validResp, err := app.Test(validReq)
+	if err != nil {
+		t.Fatalf("valid token request failed: %v", err)
+	}
+	defer validResp.Body.Close()
+
+	if validResp.StatusCode != http.StatusOK {
+		t.Fatalf("valid token status = %d, want %d", validResp.StatusCode, http.StatusOK)
 	}
 }
 
 func TestSecurityHeadersMiddleware(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.Use(SecurityHeadersMiddleware(true))
-	router.GET("/", func(c *gin.Context) {
-		c.String(http.StatusOK, "ok")
+	app := fiber.New()
+	app.Use(SecurityHeadersMiddleware(true))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.Status(http.StatusOK).SendString("ok")
 	})
 
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	router.ServeHTTP(rec, req)
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	headers := rec.Result().Header
+	headers := resp.Header
 	if got := headers.Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Fatalf("X-Content-Type-Options = %q", got)
 	}
@@ -104,18 +134,19 @@ func TestSecurityHeadersMiddleware(t *testing.T) {
 }
 
 func TestSecurityHeadersMiddlewareSkipsHSTSWithoutDirectHTTPS(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.Use(SecurityHeadersMiddleware(false))
-	router.GET("/", func(c *gin.Context) {
-		c.String(http.StatusOK, "ok")
+	app := fiber.New()
+	app.Use(SecurityHeadersMiddleware(false))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.Status(http.StatusOK).SendString("ok")
 	})
 
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	router.ServeHTTP(rec, req)
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
 
-	if got := rec.Result().Header.Get("Strict-Transport-Security"); got != "" {
+	if got := resp.Header.Get("Strict-Transport-Security"); got != "" {
 		t.Fatalf("Strict-Transport-Security = %q, want empty", got)
 	}
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/drunkleen/l-ui/hub/web/session"
 	"github.com/drunkleen/l-ui/hub/web/websocket"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 )
 
 // InboundController handles HTTP requests related to Xray inbounds management.
@@ -24,9 +24,9 @@ type InboundController struct {
 }
 
 // NewInboundController creates a new InboundController and sets up its routes.
-func NewInboundController(g *gin.RouterGroup) *InboundController {
+func NewInboundController(router fiber.Router) *InboundController {
 	a := &InboundController{}
-	a.initRouter(g)
+	a.initRouter(router)
 	return a
 }
 
@@ -59,82 +59,86 @@ func (a *InboundController) broadcastInboundsUpdate(userId int) {
 }
 
 // initRouter initializes the routes for inbound-related operations.
-func (a *InboundController) initRouter(g *gin.RouterGroup) {
+func (a *InboundController) initRouter(router fiber.Router) {
 
-	g.GET("/list", a.getInbounds)
-	g.GET("/list/slim", a.getInboundsSlim)
-	g.GET("/options", a.getInboundOptions)
-	g.GET("/get/:id", a.getInbound)
-	g.GET("/:id/fallbacks", a.getFallbacks)
+	router.Get("/list", a.getInbounds)
+	router.Get("/list/slim", a.getInboundsSlim)
+	router.Get("/options", a.getInboundOptions)
+	router.Get("/get/:id", a.getInbound)
+	router.Get("/:id/fallbacks", a.getFallbacks)
 
-	g.POST("/add", a.addInbound)
-	g.POST("/del/:id", a.delInbound)
-	g.POST("/bulkDel", a.bulkDelInbounds)
-	g.POST("/update/:id", a.updateInbound)
-	g.POST("/setEnable/:id", a.setInboundEnable)
-	g.POST("/:id/resetTraffic", a.resetInboundTraffic)
-	g.POST("/:id/delAllClients", a.delAllInboundClients)
-	g.POST("/resetAllTraffics", a.resetAllTraffics)
-	g.POST("/import", a.importInbound)
-	g.POST("/:id/fallbacks", a.setFallbacks)
+	router.Post("/add", a.addInbound)
+	router.Post("/del/:id", a.delInbound)
+	router.Post("/bulkDel", a.bulkDelInbounds)
+	router.Post("/update/:id", a.updateInbound)
+	router.Post("/setEnable/:id", a.setInboundEnable)
+	router.Post("/:id/resetTraffic", a.resetInboundTraffic)
+	router.Post("/:id/delAllClients", a.delAllInboundClients)
+	router.Post("/resetAllTraffics", a.resetAllTraffics)
+	router.Post("/import", a.importInbound)
+	router.Post("/:id/fallbacks", a.setFallbacks)
 }
 
 // getInbounds retrieves the list of inbounds for the logged-in user.
-func (a *InboundController) getInbounds(c *gin.Context) {
+func (a *InboundController) getInbounds(c fiber.Ctx) error {
 	user := session.GetLoginUser(c)
 	inbounds, err := a.inboundService.GetInbounds(user.Id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
-		return
+		return nil
 	}
 	jsonObj(c, inbounds, nil)
+	return nil
 }
 
 // getInboundsSlim is the list-page variant that strips full client
 // payloads from settings.clients[]. Detail-view flows still use /get/:id.
-func (a *InboundController) getInboundsSlim(c *gin.Context) {
+func (a *InboundController) getInboundsSlim(c fiber.Ctx) error {
 	user := session.GetLoginUser(c)
 	inbounds, err := a.inboundService.GetInboundsSlim(user.Id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
-		return
+		return nil
 	}
 	jsonObj(c, inbounds, nil)
+	return nil
 }
 
 // getInboundOptions returns a lightweight projection of the user's inbounds
 // (id, remark, protocol, port, tlsFlowCapable) for pickers in the clients UI.
 // Avoids shipping per-client settings and traffic stats just to fill a dropdown.
-func (a *InboundController) getInboundOptions(c *gin.Context) {
+func (a *InboundController) getInboundOptions(c fiber.Ctx) error {
 	user := session.GetLoginUser(c)
 	options, err := a.inboundService.GetInboundOptions(user.Id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
-		return
+		return nil
 	}
 	jsonObj(c, options, nil)
+	return nil
 }
 
 // getInbound retrieves a specific inbound by its ID.
-func (a *InboundController) getInbound(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+func (a *InboundController) getInbound(c fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "get"), err)
-		return
+		return nil
 	}
 	inbound, err := a.inboundService.GetInboundDetail(id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
-		return
+		return nil
 	}
 	jsonObj(c, inbound, nil)
+	return nil
 }
 
 // addInbound creates a new inbound configuration.
-func (a *InboundController) addInbound(c *gin.Context) {
+func (a *InboundController) addInbound(c fiber.Ctx) error {
 	inbound, ok := middleware.BindAndValidate[model.Inbound](c)
 	if !ok {
-		return
+		return nil
 	}
 	user := session.GetLoginUser(c)
 	if inbound.UserId <= 0 {
@@ -151,7 +155,7 @@ func (a *InboundController) addInbound(c *gin.Context) {
 	inbound, needRestart, err := a.inboundService.AddInbound(inbound)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonMsgObj(c, I18nWeb(c, "pages.inbounds.toasts.inboundCreateSuccess"), inbound, nil)
 	if needRestart {
@@ -159,19 +163,20 @@ func (a *InboundController) addInbound(c *gin.Context) {
 	}
 	a.broadcastInboundsUpdate(user.Id)
 	notifyClientsChanged()
+	return nil
 }
 
 // delInbound deletes an inbound configuration by its ID.
-func (a *InboundController) delInbound(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+func (a *InboundController) delInbound(c fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundDeleteSuccess"), err)
-		return
+		return nil
 	}
 	needRestart, err := a.inboundService.DelInbound(id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonMsgObj(c, I18nWeb(c, "pages.inbounds.toasts.inboundDeleteSuccess"), id, nil)
 	if needRestart {
@@ -180,6 +185,7 @@ func (a *InboundController) delInbound(c *gin.Context) {
 	user := session.GetLoginUser(c)
 	a.broadcastInboundsUpdate(user.Id)
 	notifyClientsChanged()
+	return nil
 }
 
 type bulkDelInboundsRequest struct {
@@ -188,16 +194,16 @@ type bulkDelInboundsRequest struct {
 
 // bulkDelInbounds deletes several inbounds in one call. Failures are
 // reported per id and the rest still proceed; xray restarts at most once.
-func (a *InboundController) bulkDelInbounds(c *gin.Context) {
+func (a *InboundController) bulkDelInbounds(c fiber.Ctx) error {
 	var req bulkDelInboundsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.Bind().JSON(&req); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	result, needRestart, err := a.inboundService.DelInbounds(req.Ids)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonObj(c, result, nil)
 	if needRestart {
@@ -206,20 +212,21 @@ func (a *InboundController) bulkDelInbounds(c *gin.Context) {
 	user := session.GetLoginUser(c)
 	a.broadcastInboundsUpdate(user.Id)
 	notifyClientsChanged()
+	return nil
 }
 
 // updateInbound updates an existing inbound configuration.
-func (a *InboundController) updateInbound(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+func (a *InboundController) updateInbound(c fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), err)
-		return
+		return nil
 	}
 	inbound := &model.Inbound{
 		Id: id,
 	}
 	if !middleware.BindAndValidateInto(c, inbound) {
-		return
+		return nil
 	}
 	if inbound.UserId <= 0 {
 		inbound.UserId = session.GetLoginUser(c).Id
@@ -234,7 +241,7 @@ func (a *InboundController) updateInbound(c *gin.Context) {
 	inbound, needRestart, err := a.inboundService.UpdateInbound(inbound)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonMsgObj(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), inbound, nil)
 	if needRestart {
@@ -243,6 +250,7 @@ func (a *InboundController) updateInbound(c *gin.Context) {
 	user := session.GetLoginUser(c)
 	a.broadcastInboundsUpdate(user.Id)
 	notifyClientsChanged()
+	return nil
 }
 
 // setInboundEnable flips only the enable flag of an inbound. This is a
@@ -250,24 +258,24 @@ func (a *InboundController) updateInbound(c *gin.Context) {
 // settings JSON (every client) — far too heavy for an interactive switch
 // on inbounds with thousands of clients. Frontend optimistically updates
 // the UI; we just persist + sync xray + nudge other open admin sessions.
-func (a *InboundController) setInboundEnable(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+func (a *InboundController) setInboundEnable(c fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), err)
-		return
+		return nil
 	}
 	type form struct {
 		Enable bool `json:"enable" form:"enable"`
 	}
 	var f form
-	if err := c.ShouldBind(&f); err != nil {
+	if err := c.Bind().Body(&f); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	needRestart, err := a.inboundService.SetInboundEnable(id, f.Enable)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), nil)
 	if needRestart {
@@ -278,24 +286,26 @@ func (a *InboundController) setInboundEnable(c *gin.Context) {
 	// sessions re-fetch via REST. The toggling admin's own UI already
 	// updated optimistically.
 	websocket.BroadcastInvalidate(websocket.MessageTypeInbounds)
+	return nil
 }
 
 // resetInboundTraffic resets traffic counters for a specific inbound.
-func (a *InboundController) resetInboundTraffic(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+func (a *InboundController) resetInboundTraffic(c fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), err)
-		return
+		return nil
 	}
 
 	err = a.inboundService.ResetInboundTraffic(id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	} else {
 		a.xrayService.SetToNeedRestart()
 	}
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.resetInboundTrafficSuccess"), nil)
+	return nil
 }
 
 // delAllInboundClients removes every client attached to a specific inbound
@@ -303,25 +313,25 @@ func (a *InboundController) resetInboundTraffic(c *gin.Context) {
 // list from settings.clients[] and feeds it into ClientService.BulkDelete,
 // which handles per-inbound JSON rewriting, runtime user removal, traffic
 // row cleanup, and the SyncInbound mapping pass in one optimized cycle.
-func (a *InboundController) delAllInboundClients(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+func (a *InboundController) delAllInboundClients(c fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	emails, err := a.inboundService.EmailsByInbound(id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	if len(emails) == 0 {
 		jsonObj(c, service.BulkDeleteResult{}, nil)
-		return
+		return nil
 	}
 	result, needRestart, err := a.clientService.BulkDelete(&a.inboundService, emails, false)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonObj(c, result, nil)
 	if needRestart {
@@ -330,27 +340,29 @@ func (a *InboundController) delAllInboundClients(c *gin.Context) {
 	user := session.GetLoginUser(c)
 	a.broadcastInboundsUpdate(user.Id)
 	notifyClientsChanged()
+	return nil
 }
 
 // resetAllTraffics resets all traffic counters across all inbounds.
-func (a *InboundController) resetAllTraffics(c *gin.Context) {
+func (a *InboundController) resetAllTraffics(c fiber.Ctx) error {
 	err := a.inboundService.ResetAllTraffics()
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	} else {
 		a.xrayService.SetToNeedRestart()
 	}
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.resetAllTrafficSuccess"), nil)
+	return nil
 }
 
 // importInbound imports an inbound configuration from provided data.
-func (a *InboundController) importInbound(c *gin.Context) {
+func (a *InboundController) importInbound(c fiber.Ctx) error {
 	inbound := &model.Inbound{}
-	err := json.Unmarshal([]byte(c.PostForm("data")), inbound)
+	err := json.Unmarshal([]byte(c.FormValue("data")), inbound)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	user := session.GetLoginUser(c)
 	inbound.Id = 0
@@ -369,7 +381,7 @@ func (a *InboundController) importInbound(c *gin.Context) {
 	inbound, needRestart, err := a.inboundService.AddInbound(inbound)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	jsonMsgObj(c, I18nWeb(c, "pages.inbounds.toasts.inboundCreateSuccess"), inbound, nil)
 	if needRestart {
@@ -377,6 +389,7 @@ func (a *InboundController) importInbound(c *gin.Context) {
 	}
 	a.broadcastInboundsUpdate(user.Id)
 	notifyClientsChanged()
+	return nil
 }
 
 // resolveHost mirrors what sub.SubService.ResolveRequest does for the host
@@ -384,9 +397,9 @@ func (a *InboundController) importInbound(c *gin.Context) {
 // then X-Real-IP, then the host portion of c.Request.Host. Keeping it in the
 // controller layer means the service interface stays HTTP-agnostic — service
 // methods receive a plain host string instead of a *gin.Context.
-func resolveHost(c *gin.Context) string {
+func resolveHost(c fiber.Ctx) string {
 	if isTrustedForwardedRequest(c) {
-		if h := strings.TrimSpace(c.GetHeader("X-Forwarded-Host")); h != "" {
+		if h := strings.TrimSpace(c.Get("X-Forwarded-Host")); h != "" {
 			if i := strings.Index(h, ","); i >= 0 {
 				h = strings.TrimSpace(h[:i])
 			}
@@ -395,51 +408,53 @@ func resolveHost(c *gin.Context) string {
 			}
 			return h
 		}
-		if h := c.GetHeader("X-Real-IP"); h != "" {
+		if h := c.Get("X-Real-IP"); h != "" {
 			return h
 		}
 	}
-	if h, _, err := net.SplitHostPort(c.Request.Host); err == nil {
+	if h, _, err := net.SplitHostPort(c.Hostname()); err == nil {
 		return h
 	}
-	return c.Request.Host
+	return c.Hostname()
 }
 
 // getFallbacks returns the fallback rules attached to the master inbound.
-func (a *InboundController) getFallbacks(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+func (a *InboundController) getFallbacks(c fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "get"), err)
-		return
+		return nil
 	}
 	rows, err := a.fallbackService.GetByMaster(id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "get"), err)
-		return
+		return nil
 	}
 	jsonObj(c, rows, nil)
+	return nil
 }
 
 // setFallbacks atomically replaces the master inbound's fallback list
 // and triggers an Xray restart so the new settings.fallbacks take effect.
-func (a *InboundController) setFallbacks(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+func (a *InboundController) setFallbacks(c fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	type body struct {
 		Fallbacks []service.FallbackInput `json:"fallbacks"`
 	}
 	var b body
-	if err := c.ShouldBindJSON(&b); err != nil {
+	if err := c.Bind().JSON(&b); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	if err := a.fallbackService.SetByMaster(id, b.Fallbacks); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
+		return nil
 	}
 	a.xrayService.SetToNeedRestart()
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), nil)
+	return nil
 }

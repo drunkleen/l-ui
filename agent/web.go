@@ -4,9 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,14 +14,13 @@ import (
 	"github.com/drunkleen/l-ui/internal/config"
 	"github.com/drunkleen/l-ui/internal/logger"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v3"
 	"github.com/robfig/cron/v3"
 )
 
 type AgentServer struct {
-	httpServer *http.Server
+	app        *fiber.App
 	listener   net.Listener
-	engine     *gin.Engine
 	cron       *cron.Cron
 	port       int
 	authSecret string
@@ -47,18 +44,10 @@ func NewAgentServer(authSecret, certDir string) *AgentServer {
 	}
 }
 
-func (s *AgentServer) initRouter() *gin.Engine {
-	if config.IsDebug() {
-		gin.SetMode(gin.DebugMode)
-	} else {
-		gin.DefaultWriter = io.Discard
-		gin.DefaultErrorWriter = io.Discard
-		gin.SetMode(gin.ReleaseMode)
-	}
+func (s *AgentServer) initRouter() *fiber.App {
+	app := fiber.New()
 
-	engine := gin.Default()
-
-	api := engine.Group("/api/v1")
+	api := app.Group("/api/v1")
 	api.Use(controller.AuthMiddleware(s.authSecret))
 
 	status := &controller.StatusController{}
@@ -70,33 +59,33 @@ func (s *AgentServer) initRouter() *gin.Engine {
 	restart := &controller.RestartController{}
 	cert := controller.NewCertController(s.certDir)
 
-	api.GET("/status", status.GetStatus)
-	api.GET("/metrics", metrics.GetMetrics)
-	api.GET("/sysinfo", sysinfo.GetSysInfo)
-	api.GET("/config", cfg.GetConfig)
-	api.POST("/config/push", cfg.PushConfig)
-	api.POST("/config/apply", cfg.ApplyConfig)
-	api.GET("/firewall/status", fw.GetStatus)
-	api.GET("/firewall/rules", fw.GetRules)
-	api.POST("/firewall/rules", fw.AddRule)
-	api.DELETE("/firewall/rules", fw.DeleteRule)
-	api.POST("/firewall/enable", fw.Enable)
-	api.POST("/firewall/disable", fw.Disable)
-	api.GET("/logs", logs.TailLog)
-	api.POST("/restart", restart.RestartAgent)
-	api.POST("/xray/restart", restart.RestartXray)
+	api.Get("/status", status.GetStatus)
+	api.Get("/metrics", metrics.GetMetrics)
+	api.Get("/sysinfo", sysinfo.GetSysInfo)
+	api.Get("/config", cfg.GetConfig)
+	api.Post("/config/push", cfg.PushConfig)
+	api.Post("/config/apply", cfg.ApplyConfig)
+	api.Get("/firewall/status", fw.GetStatus)
+	api.Get("/firewall/rules", fw.GetRules)
+	api.Post("/firewall/rules", fw.AddRule)
+	api.Delete("/firewall/rules", fw.DeleteRule)
+	api.Post("/firewall/enable", fw.Enable)
+	api.Post("/firewall/disable", fw.Disable)
+	api.Get("/logs", logs.TailLog)
+	api.Post("/restart", restart.RestartAgent)
+	api.Post("/xray/restart", restart.RestartXray)
 
-	api.POST("/certs", cert.Push)
-	api.GET("/certs/status", cert.Status)
+	api.Post("/certs", cert.Push)
+	api.Get("/certs/status", cert.Status)
 
-	engine.GET("/healthz", controller.Healthz)
-	engine.GET("/readyz", controller.Readyz)
+	app.Get("/healthz", controller.Healthz)
+	app.Get("/readyz", controller.Readyz)
 
-	engine.NoRoute(func(c *gin.Context) {
-		c.AbortWithStatus(http.StatusNotFound)
+	app.Use(func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusNotFound).SendString("Not Found")
 	})
 
-	return engine
+	return app
 }
 
 func (s *AgentServer) startCron() {
@@ -109,22 +98,13 @@ func (s *AgentServer) startCron() {
 }
 
 func (s *AgentServer) Start() error {
-	s.engine = s.initRouter()
+	s.app = s.initRouter()
 	s.startCron()
 
 	listenAddr := net.JoinHostPort("", strconv.Itoa(s.port))
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return err
-	}
-	s.listener = listener
-
-	s.httpServer = &http.Server{
-		Handler:           s.engine,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       120 * time.Second,
 	}
 
 	certPath := filepath.Join(s.certDir, "agent_cert.pem")
@@ -138,17 +118,17 @@ func (s *AgentServer) Start() error {
 			if err != nil {
 				return fmt.Errorf("load TLS cert: %w", err)
 			}
-			s.httpServer.TLSConfig = &tls.Config{
+			listener = tls.NewListener(listener, &tls.Config{
 				Certificates: []tls.Certificate{tlsCert},
 				MinVersion:   tls.VersionTLS12,
-			}
-			listener = tls.NewListener(listener, s.httpServer.TLSConfig)
+			})
 			logger.Infof("TLS enabled for agent")
 		}
 	}
 
+	s.listener = listener
 	go func() {
-		if err := s.httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
+		if err := s.app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true}); err != nil {
 			logger.Errorf("Agent server error: %v", err)
 		}
 	}()
@@ -160,10 +140,8 @@ func (s *AgentServer) Stop() error {
 	if s.cron != nil {
 		s.cron.Stop()
 	}
-	if s.httpServer != nil {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer shutdownCancel()
-		return s.httpServer.Shutdown(shutdownCtx)
+	if s.app != nil {
+		return s.app.ShutdownWithTimeout(15 * time.Second)
 	}
 	return nil
 }
