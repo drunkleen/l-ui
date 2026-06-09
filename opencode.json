@@ -1,0 +1,33 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 10000
+  },
+
+  "watcher": {
+    "ignore": [
+      ".git/**",
+
+      "node_modules/**",
+
+      "frontend/dist/**",
+      "frontend/src/generated/**",
+      "frontend/public/openapi.json",
+
+      "hub/web/dist/**",
+
+      "tmp/**",
+      "bin/**",
+
+      "coverage/**",
+
+      "*.log",
+
+      ".idea/**",
+      ".vscode/**"
+    ]
+  }
+}

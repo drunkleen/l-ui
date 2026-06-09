@@ -5,7 +5,6 @@
 .cache/
 .sync*
 .omo
-.opencode
 
 # Ignore log files
 *.log

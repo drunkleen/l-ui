@@ -1,94 +1,442 @@
-# AGENTS.md
+# L-UI Agent Rules
 
-## Quick Reference
-- Go entrypoint: `main.go`; Frontend: `frontend/` (Vite app → `web/dist/` → embedded by Go)
-- Frontend commands in `frontend/`: `npm ci`, `npm run dev`, `npm run typecheck`, `npm test`, `npm run build`
-- Go tests: `mkdir -p web/dist && touch web/dist/.gitkeep && go test $(go list ./... | grep -v '/frontend/node_modules/')`
-- `make dev`, `make test`, `make test-back`, `make test-front`, `make gen-api`, `make gen-zod`, `make build`, `make clean`, `make release`
-- Go 1.26.4, Node 22, npm 10+
-- Default DB: SQLite at `/etc/l-ui/l-ui.db`; Postgres via `LUI_DB_TYPE=postgres` + `LUI_DB_DSN`
+## Project Summary
 
-## Architecture
-- **Hub-first control plane**: hub manages VPS nodes over SSH/SCP + node APIs; nodes are lightweight agents
-- **Three Vite entry pages**: `index.html` (`/panel/*`), `login.html`, `subpage.html`
-- **Release bundles**: hub/agent split tarballs per arch, versioned+arch cached in hub DB, downloaded from GitHub release assets
-- **Supported arches**: amd64, arm64, 386, armv7, armv6, armv5, s390x
-- **CLI menus**: Bubble Tea TUI (`hub/cmd/menu.go`); `l-ui install`, `l-ui update`, `l-ui uninstall` subcommands in Go
-- **Shell scripts are thin wrappers**: `install.sh` (50 lines, arch→download→exec), `l-ui.sh` (delegates to Go binary)
+L-UI is a control-plane dashboard for managing remote Xray VPS nodes.
 
-## Frontend Theme (Catppuccin)
-- **🌙 Mocha** → Dark mode (default), **🌌 Frappé** → Soft dark mode, **☀️ Latte** → Light mode
-- 3-theme cycle: Mocha → Frappé → Latte → Mocha (via single `toggleTheme()` call)
-- Theme based on `useTheme.tsx` hook with Ant Design `ConfigProvider` + CSS classes (`body.dark/.light`, `[data-theme="frappe"]`)
-- Key Catppuccin colors: Mocha Base `#1e1e2e`, Surface0 `#313244`, Text `#cdd6f4`, Blue `#89b4fa`, Green `#a6e3a1`, Red `#f38ba8`
-- Frappé: Base `#303446`, Text `#c6d0f5`, Blue `#8caaee`, Green `#a6d189`
-- Latte: Base `#eff1f5`, Text `#4c4f69`, Blue `#1e66f5`, Green `#40a02b`
-- CSS files with theme overrides: `AppSidebar.css`, `page-shell.css`, `LogModal.css`, `XrayLogModal.css`, `NodeFormModal.css`
-- Component-level themes: `DateTimePicker.tsx` (3 themes), `JsonEditor.tsx` (CodeMirror dark themes)
+Architecture:
+- Hub: Go + Fiber v3 backend.
+- Agent: separate Go binary installed on VPS nodes.
+- Frontend: React 19 + Ant Design + Vite.
+- Database: SQLite.
+- Auth:
+  - JWT for web panel.
+  - HMAC-SHA256 / Bearer token for hub-to-agent API.
+- Xray runs on nodes, not on the hub.
 
-## Project State
-- All Go packages pass with 0 failures (35+ packages)
-- Single `release.yml` workflow (Docker multi-arch build commented out)
-- Bootstrap flow: `StartBootstrap` uses `context.Background()`, agent API at `/api/v1/status`
-- Service files patched at install time with `run` subcommand in `ExecStart`
-- `.github/workflows/release.yml`: 7-arch binary release; Docker job commented out
+## Agent Routing Policy
 
-## Workflow (ALL agents MUST follow)
+When the user gives any bug, feature, refactor, review, docs, or architecture task, do not act as one generic agent.
 
-### 1. Full Problem Analysis ("fix it")
-When user says "fix it" after describing a problem:
-**keep the steps (2. Consult First, 3. Plan Before Code, 4. Part-by-Part TDD + Audit and Test Loop, 5. Final Sweep) always in mind.**
-1. **Identify the bug/issue** — find the exact root cause
-2. **Map all affected code paths** — every function/file the bug touches, every caller, every integration point
-3. **Identify side effects** — what else this change might break, what depends on the current behavior
-4. **List all symptoms** — not just the reported symptom, but related misbehavior that shares the same root
-5. Present findings to user before proceeding (if scope is unclear)
+First classify the task, then use the correct specialist agent.
 
-### 2. Consult First
-When asked to do/change/fix anything, **stop and consult the user**:
-- Ask clarifying questions about what they want
-- Present options with trade-offs
-- Mark the best/recommended approach
-- Wait for user decision before proceeding
+Default workflow:
 
-### 3. Plan Before Code
-Write the plan in `PLAN.md` before touching any code:
-- Outline every step with files to change
-- Document **what each change affects** and what might break
-- List dependencies between steps
-- Add test strategy for each step
-- If audit during step N uncovers a bug, add it to the plan before fixing
+1. Use `@planner` first for investigation and planning.
+2. Use `@architect` if the task changes architecture, API contracts, database schema, hub-agent protocols, or system design.
+3. Use the relevant implementation agent.
+4. Use `@security` if the task touches auth, tokens, secrets, API access, shell commands, VPS/node communication, database writes, or user data.
+5. Use `@reviewer` after code changes.
+6. Use `@docs` if behavior, installation, API, or workflow changed.
 
-### 4. Part-by-Part TDD + Audit and Test Loop
-Execute the plan **one part at a time**. For each part:
+Do not skip planning unless the task is obviously tiny, such as:
+- fixing a typo
+- renaming a label
+- changing a single CSS class
+- updating one line of documentation
 
-1. **Write tests first** for the code you're about to create/change
-2. **Run tests** — they should fail (new tests) or pass baseline
-3. **Implement the change** — make the tests pass
-4. **Run tests again** to verify
-5. **Audit** the code you just wrote/changed for misbehavior or bugs:
-   - Run full test suite (`go test ./...` / `npm test`)
-   - Run type checker (`npm run typecheck`)
-   - Search for edge cases, nil panics, race conditions, error handling gaps
-   - Check that pre-existing behavior still works
-6. **If audit finds a bug or misbehavior** → add it to PLAN.md → plan its fix → fix → audit loop
-7. **Mark part complete** in PLAN.md, move to next part
+## Agent Selection
 
-### 5. Final Sweep
-When all parts are done:
-1. Run full test suite and type checker
-2. **Audit across ALL completed parts** for misbehavior, regressions, or missed edge cases
-3. **Fix → audit → fix → audit loop** until everything is perfect
-4. Report results to user with a short summary
+Use `@planner` for:
+- unclear tasks
+- bugs
+- feature planning
+- architecture questions
+- finding relevant files
+- deciding what should change
+- breaking work into steps
 
-### Hard Rules
-- Never edit `frontend/public/openapi.json` or `frontend/src/generated/{zod,types}.ts` by hand; use `npm run gen:api` / `npm run gen:zod`
-- Verify tags/asset naming before editing release workflows
-- Keep PLAN.md limited to open work only; durable guidance here
-- After each milestone: update PLAN.md, run tests, prompt user with 2-5 line summary
+Use `@architect` for:
+- database schema design
+- API contracts
+- hub-agent protocols
+- websocket/event systems
+- scaling decisions
+- plugin/module design
+- cross-cutting system changes
 
-### Git Rules
-- When user says "commit", commit immediately. If changes span multiple logical concerns (frontend theme ≠ backend bootstrap logic), split into separate commits per concern.
-- Before committing: inspect `git status`, `git diff`, `git log --oneline -10`; stage only intended files.
-- Write a concise commit message matching repo style (imperative, prefix like `feat:` / `fix:` / `refactor:`).
-- Never force-push, amend, or create empty commits unless explicitly told.
+Use `@backend` for:
+- Hub backend
+- Go/Fiber routes
+- services
+- controllers
+- SQLite/database logic
+- JWT auth
+- API behavior
+- server-side validation
+
+Use `@frontend` for:
+- React UI
+- Ant Design components
+- Vite
+- frontend state
+- frontend API integration
+- page layout
+- dashboard UX
+
+Use `@agent` for:
+- remote VPS agent
+- node registration
+- node heartbeat
+- Xray config management
+- hub-to-agent communication
+- HMAC/Bearer authentication between hub and node
+- VPS-side operations
+
+Use `@security` for:
+- JWT
+- HMAC
+- Bearer tokens
+- passwords
+- secrets
+- permissions
+- command execution
+- path traversal
+- auth bypass
+- user data exposure
+- database safety
+- API abuse
+
+Use `@reviewer` for:
+- reviewing diffs
+- checking correctness
+- checking architecture
+- checking error handling
+- checking tests
+- finding regressions
+
+Use `@docs` for:
+- README
+- docs/
+- install guides
+- troubleshooting
+- API documentation
+- developer workflow docs
+
+## Default Workflows
+
+Bug:
+
+```txt
+planner → relevant implementation agent → security if needed → reviewer
+````
+
+Small backend bug:
+
+```txt
+planner → backend → reviewer
+```
+
+Frontend bug:
+
+```txt
+planner → frontend → reviewer
+```
+
+Hub-agent bug:
+
+```txt
+planner → agent/backend → security → reviewer
+```
+
+New feature:
+
+```txt
+planner → architect if needed → implementation agent(s) → security if needed → reviewer → docs if needed
+```
+
+Full-stack feature:
+
+```txt
+planner → architect if needed → backend → frontend → security if needed → reviewer → docs if needed
+```
+
+Documentation task:
+
+```txt
+docs → reviewer
+```
+
+## Routing Examples
+
+If the user says:
+
+"login does not work"
+
+Then:
+
+1. `@planner` investigates auth flow and relevant files.
+2. `@backend` patches the backend if needed.
+3. `@frontend` patches frontend login handling if needed.
+4. `@security` reviews auth/token behavior.
+5. `@reviewer` reviews the final diff.
+
+If the user says:
+
+"add heartbeat monitoring for nodes"
+
+Then:
+
+1. `@planner` designs the flow.
+2. `@architect` checks hub-agent protocol and DB/API design.
+3. `@agent` implements node-side heartbeat.
+4. `@backend` implements hub-side API/storage.
+5. `@frontend` implements dashboard display if needed.
+6. `@security` reviews hub-agent auth.
+7. `@reviewer` reviews the diff.
+
+If the user says:
+
+"make the dashboard prettier"
+
+Then:
+
+1. `@planner` identifies frontend scope.
+2. `@frontend` implements UI changes.
+3. `@reviewer` reviews the diff.
+
+If the user says:
+
+"update install docs"
+
+Then:
+
+1. `@docs` updates documentation.
+2. `@reviewer` checks accuracy.
+
+## Context Budget Rules
+
+Maximum files to inspect initially:
+
+* Small bug: 5 files
+* Medium bug: 10 files
+* Feature: 15 files
+* Architecture task: 20 files
+
+Only expand the search if evidence requires it.
+
+Always:
+
+1. Search first.
+2. Open matching files.
+3. Stop when root cause is identified.
+
+Never read the entire repository.
+
+## Execution Rules
+
+Before editing:
+
+* identify the task type
+* identify the responsible agent
+* identify relevant files
+* explain the plan briefly
+
+During editing:
+
+* keep changes minimal
+* do not scan the whole repo
+* do not refactor unrelated code
+* do not edit generated files manually
+
+After editing:
+
+* run the smallest relevant verification command
+* summarize changed files
+* mention remaining risks
+
+## Definition of Done
+
+A task is not complete until:
+
+* Code compiles.
+* Relevant tests pass or the reason they could not run is explained.
+* No obvious regressions are introduced.
+* Error handling is present.
+* Documentation is updated if behavior changed.
+* Security review is performed when applicable.
+* Changed files and verification commands are reported.
+
+## Escalation Rules
+
+Re-invoke `@planner` when:
+
+* Database schema changes.
+* API contracts change.
+* Authentication changes.
+* Hub-Agent communication changes.
+* New infrastructure components are added.
+* Multiple agents disagree on implementation.
+* Initial plan becomes wrong during implementation.
+
+Do not continue implementation until the plan is updated.
+
+## Important Folders
+
+* `hub/`: main hub backend, controllers, services, CLI/TUI.
+* `agent/`: remote VPS agent.
+* `internal/`: shared packages, models, config, auth, SSH, retry.
+* `frontend/`: React/Vite frontend.
+* `docs/`: architecture, API, install, troubleshooting.
+* `tools/`: development/testing tools.
+* `hub/web/dist/`: generated frontend build. Do not edit manually.
+
+## Golden Rule
+
+Do not scan or refactor the whole repository unless explicitly asked.
+
+For every task:
+
+1. Understand the exact goal.
+2. Search only relevant files first.
+3. Explain root cause briefly.
+4. Make the smallest safe change.
+5. Run the smallest useful verification command.
+6. Mention changed files and verification result.
+
+## Token Discipline
+
+Avoid:
+
+* Reading full large files unless needed.
+* Reading generated files.
+* Reading minified JS/CSS.
+* Reading `node_modules`, `dist`, `build`, `.git`, `tmp`, `bin`.
+* Pasting large files in responses.
+* Refactoring unrelated code.
+
+Prefer:
+
+* `rg` before opening files.
+* Small diffs.
+* One feature/bug per patch.
+* Summary instead of full file dumps.
+
+## Architecture Rules
+
+Prefer existing patterns.
+
+Before creating new services, repositories, handlers, components, hooks, utilities, middleware, or packages:
+
+1. Search for an existing equivalent.
+2. Reuse existing patterns.
+3. Only create new abstractions when necessary.
+
+Avoid introducing new frameworks, libraries, or architectural patterns without explicit justification.
+
+## Build/Test Commands
+
+Backend quick test:
+
+```bash
+make test-back
+```
+
+Frontend test:
+
+```bash
+make test-front
+```
+
+Typecheck:
+
+```bash
+make typecheck
+```
+
+Full test:
+
+```bash
+make test
+```
+
+Build everything:
+
+```bash
+make build
+```
+
+Development:
+
+```bash
+make dev
+```
+
+Production-like local test:
+
+```bash
+make dev-real-test
+```
+
+## Frontend Rules
+
+* Do not edit generated API files manually.
+* Do not hand-edit:
+
+  * `frontend/public/openapi.json`
+  * `frontend/src/generated/`
+* Use generation commands instead:
+
+  * `make gen-api`
+  * `make gen-zod`
+
+## Backend Rules
+
+* Preserve Fiber v3 patterns.
+* Keep hub and agent responsibilities separate.
+* Hub must not run Xray directly.
+* Agent-only behavior belongs in `agent/`.
+* Shared logic belongs in `internal/`.
+* Do not weaken auth, HMAC, JWT, token, or TLS behavior.
+* Always handle errors explicitly.
+* Do not ignore failed config push, DB writes, or auth errors unless existing behavior clearly does so.
+
+## Database Rules
+
+* Be careful with migrations and model changes.
+* Any DB schema change needs:
+
+  * migration/update path
+  * backward compatibility check
+  * test or manual verification command
+
+## Security Rules
+
+Never:
+
+* Log secrets, tokens, private keys, JWTs, HMAC secrets, passwords.
+* Commit real `.env` values.
+* Disable auth for convenience.
+* Trust user input without validation.
+* Shell out with unsanitized values.
+
+## Git Rules
+
+Only commit when explicitly asked.
+
+Before committing:
+
+```bash
+git status
+git diff
+git log --oneline -10
+```
+
+Commit style:
+
+* `feat: ...`
+* `fix: ...`
+* `refactor: ...`
+* `docs: ...`
+* `test: ...`
+
+Never force-push, amend, or rewrite history unless explicitly told.
+
+## How to Answer
+
+Keep answers short:
+
+* What was wrong
+* What changed
+* Files changed
+* How to verify
