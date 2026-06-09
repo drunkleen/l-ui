@@ -18,7 +18,10 @@ import {
   message,
 } from 'antd';
 import {
+  CheckCircleFilled,
+  CloseCircleFilled,
   DownloadOutlined,
+  MinusCircleFilled,
 } from '@ant-design/icons';
 import type { NodeRecord } from '@/api/queries/useNodesQuery';
 import type { Msg } from '@/utils';
@@ -434,7 +437,6 @@ interface BootstrapTimelineProps {
 
 function BootstrapTimeline({ job }: BootstrapTimelineProps) {
   const { t } = useTranslation();
-  const hasError = job.state === 'failed' || job.steps?.some((s) => !s.ok);
   const isRunning = job.state === 'queued' || job.state === 'running';
 
   // Build step map keyed by name
@@ -447,29 +449,31 @@ function BootstrapTimeline({ job }: BootstrapTimelineProps) {
   // Find current step index in the full ordered list
   const { currentIdx, items } = useMemo(() => {
     let current = -1;
-    const stepItems: { title: string; status: 'finish' | 'process' | 'wait' | 'error'; description?: string }[] = [];
+    const stepItems: {
+      title: string;
+      status: 'finish' | 'process' | 'wait' | 'error';
+      icon?: React.ReactNode;
+    }[] = [];
 
     for (let i = 0; i < STEP_ORDER.length; i++) {
       const name = STEP_ORDER[i];
       const step = stepMap.get(name);
 
       if (!step) {
-        // Not yet reached
-        stepItems.push({ title: STEP_LABELS[name] ?? name, status: 'wait' });
+        stepItems.push({ title: STEP_LABELS[name] ?? name, status: 'wait', icon: <MinusCircleFilled /> });
         continue;
       }
 
       if (step.ok) {
-        stepItems.push({ title: STEP_LABELS[name] ?? name, status: 'finish' });
+        stepItems.push({ title: STEP_LABELS[name] ?? name, status: 'finish', icon: <CheckCircleFilled style={{ color: '#52c41a' }} /> });
         continue;
       }
 
-      // Non-ok step — either current or error
       if (isRunning && current < 0) {
         current = i;
         stepItems.push({ title: STEP_LABELS[name] ?? name, status: 'process' });
       } else {
-        stepItems.push({ title: STEP_LABELS[name] ?? name, status: 'error' });
+        stepItems.push({ title: STEP_LABELS[name] ?? name, status: 'error', icon: <CloseCircleFilled style={{ color: '#ff4d4f' }} /> });
         if (current < 0) current = i;
       }
     }
@@ -478,18 +482,31 @@ function BootstrapTimeline({ job }: BootstrapTimelineProps) {
   }, [stepMap, isRunning]);
 
   function generateLogText(): string {
+    const ts = (): string => {
+      const n = new Date();
+      return n.toISOString().replace('T', ' ').substring(0, 19);
+    };
     const lines: string[] = [];
-    lines.push(`Bootstrap job: ${job.id}`);
-    lines.push(`State: ${job.state}`);
+    lines.push(`=== Bootstrap Log ===`);
+    lines.push(`Job:        ${job.id}`);
+    lines.push(`State:      ${job.state}`);
+    lines.push(`Generated:  ${ts()}`);
+    lines.push(`=======================================`);
     lines.push('');
     for (const step of job.steps ?? []) {
-      lines.push(`  ${step.ok ? '✓' : '✗'} ${STEP_LABELS[step.name] ?? step.name}`);
+      lines.push(`--- [${ts()}] ${step.ok ? 'SUCCESS' : 'FAILED'} ${STEP_LABELS[step.name] ?? step.name} ---`);
       if (step.output) {
-        for (const l of step.output.trim().split('\n')) lines.push(`      ${l}`);
+        for (const l of step.output.trim().split('\n')) {
+          lines.push(`  ${l}`);
+        }
       }
       lines.push('');
     }
-    if (job.error) lines.push(`Error: ${job.error}`);
+    if (job.error) {
+      lines.push(`--- [${ts()}] ERROR ---`);
+      lines.push(`  ${job.error}`);
+    }
+    lines.push(`=======================================`);
     return lines.join('\n');
   }
 
@@ -504,9 +521,9 @@ function BootstrapTimeline({ job }: BootstrapTimelineProps) {
     URL.revokeObjectURL(url);
   }, [job]);
 
-  // Collect error steps for details display
-  const errorSteps = useMemo(() =>
-    (job.steps ?? []).filter((s) => !s.ok && s.output),
+  // Collect all steps with output for full log
+  const allStepOutput = useMemo(() =>
+    (job.steps ?? []).filter((s) => s.output),
     [job.steps],
   );
 
@@ -530,16 +547,23 @@ function BootstrapTimeline({ job }: BootstrapTimelineProps) {
         />
       </div>
 
-      {errorSteps.length > 0 && (
+      {allStepOutput.length > 0 && (
         <div style={{ marginTop: 8 }}>
-          {errorSteps.map((step) => (
+          {allStepOutput.map((step) => (
             <Collapse
               key={step.name}
               ghost
               size="small"
               items={[{
                 key: step.name,
-                label: `${STEP_LABELS[step.name] ?? step.name} — ${t('pages.nodes.bootstrapErrorDetails') || 'details'}`,
+                label: (
+                  <span>
+                    {step.ok
+                      ? <CheckCircleFilled style={{ color: '#52c41a', marginRight: 6 }} />
+                      : <CloseCircleFilled style={{ color: '#ff4d4f', marginRight: 6 }} />}
+                    {STEP_LABELS[step.name] ?? step.name}
+                  </span>
+                ),
                 children: <pre className="bootstrap-step-output">{step.output}</pre>,
               }]}
             />
@@ -547,13 +571,11 @@ function BootstrapTimeline({ job }: BootstrapTimelineProps) {
         </div>
       )}
 
-      {hasError && (
-        <div style={{ marginTop: 8, textAlign: 'center' }}>
-          <Button size="small" icon={<DownloadOutlined />} onClick={downloadLog}>
-            {t('pages.nodes.downloadLog') || 'Download Log'}
-          </Button>
-        </div>
-      )}
+      <div style={{ marginTop: 8, textAlign: 'center' }}>
+        <Button size="small" icon={<DownloadOutlined />} onClick={downloadLog}>
+          {t('pages.nodes.downloadLog') || 'Download Log'}
+        </Button>
+      </div>
 
       {job.error && (
         <Alert

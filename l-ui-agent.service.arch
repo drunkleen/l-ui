@@ -4,7 +4,7 @@ After=network.target
 Wants=network.target
 
 [Service]
-EnvironmentFile=-/etc/default/l-ui
+EnvironmentFile=-/etc/default/l-ui-agent
 Type=simple
 WorkingDirectory=/usr/local/l-ui-agent/
 ExecStart=/usr/local/l-ui-agent/l-ui-agent

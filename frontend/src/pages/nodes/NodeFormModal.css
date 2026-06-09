@@ -71,41 +71,81 @@
 }
 
 .bootstrap-steps-scroll {
-  overflow-x: auto;
+  overflow: visible;
   padding-bottom: 4px;
 }
 
 .bootstrap-steps-horizontal {
-  min-width: max-content;
+  flex-wrap: wrap;
 }
 
 .bootstrap-steps-horizontal .ant-steps-item {
   flex-shrink: 0;
+  margin-bottom: 4px;
 }
 
 .bootstrap-steps-horizontal .ant-steps-item-title {
-  font-size: 11px;
-  line-height: 1.3;
+  font-size: 10px;
+  line-height: 1.2;
+  max-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .bootstrap-steps-horizontal .ant-steps-item-icon {
-  width: 22px;
-  height: 22px;
-  line-height: 22px;
-  font-size: 12px;
-  margin-inline-end: 4px;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  font-size: 11px;
+  margin-inline-end: 3px;
+}
+
+.bootstrap-steps-horizontal .ant-steps-item-icon .ant-steps-icon {
+  font-size: 11px;
+  line-height: 18px;
 }
 
 .bootstrap-steps-horizontal .ant-steps-item-tail {
-  margin-inline-start: 22px !important;
+  margin-inline-start: 20px !important;
 }
 
 .bootstrap-steps-horizontal .ant-steps-item-container {
   padding-block: 2px;
+  display: flex;
+  align-items: center;
 }
 
 .bootstrap-steps-horizontal .ant-steps-item-content {
   min-height: auto;
+  display: inline-flex;
+}
+
+.bootstrap-steps-horizontal .ant-steps-item-process .ant-steps-item-icon .ant-steps-icon {
+  line-height: 18px;
+}
+
+/* Ensure icons are visible in dark theme */
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-finish .ant-steps-item-icon {
+  border-color: #52c41a;
+  background: transparent;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-error .ant-steps-item-icon {
+  border-color: #ff4d4f;
+  background: transparent;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-process .ant-steps-item-icon {
+  background: #89b4fa;
+  border-color: #89b4fa;
+}
+
+.is-dark .bootstrap-steps-horizontal .ant-steps-item-wait .ant-steps-item-icon {
+  background: #313244;
+  border-color: #45475a;
+  opacity: 0.6;
 }
 
 /* ── Dark theme overrides for Steps ────────────────────────────────── */

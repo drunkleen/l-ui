@@ -189,6 +189,20 @@ func bodyBytes(body any) []byte {
 	}
 }
 
+// decodeObj unmarshals env.Obj into T. Returns zero T and an error if
+// env is nil, Obj is nil/empty, or unmarshal fails.
+func decodeObj[T any](env *envelope) (T, error) {
+	var zero T
+	if env == nil || len(env.Obj) == 0 {
+		return zero, nil
+	}
+	var v T
+	if err := json.Unmarshal(env.Obj, &v); err != nil {
+		return zero, fmt.Errorf("decode response: %w", err)
+	}
+	return v, nil
+}
+
 func (r *Remote) resolveRemoteID(ctx context.Context, tag string) (int, error) {
 	if id, ok := r.cacheGetTag(tag); ok {
 		return id, nil
@@ -240,11 +254,12 @@ func (r *Remote) refreshRemoteIDs(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var list []struct {
+	type inboundRef struct {
 		Id  int    `json:"id"`
 		Tag string `json:"tag"`
 	}
-	if err := json.Unmarshal(env.Obj, &list); err != nil {
+	list, err := decodeObj[[]inboundRef](env)
+	if err != nil {
 		return fmt.Errorf("decode inbound list: %w", err)
 	}
 	next := make(map[string]int, len(list))
@@ -383,8 +398,8 @@ func (r *Remote) FetchLogs(ctx context.Context, lines int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var logLines string
-	if err := json.Unmarshal(env.Obj, &logLines); err != nil {
+	logLines, err := decodeObj[string](env)
+	if err != nil {
 		return "", fmt.Errorf("decode logs: %w", err)
 	}
 	return logLines, nil
@@ -404,12 +419,12 @@ func (r *Remote) Cleanup(ctx context.Context) error {
 }
 
 func (r *Remote) GetStatus(ctx context.Context) (*RemoteStatus, error) {
-	env, err := r.doWithRetry(ctx, http.MethodGet, "api/v1/server/status", nil)
+	env, err := r.doWithRetry(ctx, http.MethodGet, "api/v1/status", nil)
 	if err != nil {
 		return nil, err
 	}
-	var st RemoteStatus
-	if err := json.Unmarshal(env.Obj, &st); err != nil {
+	st, err := decodeObj[RemoteStatus](env)
+	if err != nil {
 		return nil, err
 	}
 	return &st, nil
@@ -425,8 +440,8 @@ func (r *Remote) ListUfwRules(ctx context.Context) (*UfwStatus, error) {
 	if err != nil {
 		return nil, err
 	}
-	var agent agentFirewallStatus
-	if err := json.Unmarshal(env.Obj, &agent); err != nil {
+	agent, err := decodeObj[agentFirewallStatus](env)
+	if err != nil {
 		return nil, err
 	}
 	status := &UfwStatus{Active: agent.Active, Installed: agent.Installed, Rules: make([]UfwRule, len(agent.Rules))}
@@ -470,8 +485,12 @@ func (r *Remote) DisableUfw(ctx context.Context) error {
 	return err
 }
 
+type configVersionResult struct {
+	ConfigVersion int `json:"config_version"`
+}
+
 func (r *Remote) PushNodeConfig(ctx context.Context, hubNodeID, hubEndpoint string, xrayConfig, clientList json.RawMessage) (int, error) {
-	env, err := r.do(ctx, http.MethodPost, "api/v1/config/push",
+	env, err := r.doWithRetry(ctx, http.MethodPost, "api/v1/config/push",
 		map[string]any{
 			"hub_node_id":  hubNodeID,
 			"hub_endpoint": hubEndpoint,
@@ -481,15 +500,7 @@ func (r *Remote) PushNodeConfig(ctx context.Context, hubNodeID, hubEndpoint stri
 	if err != nil {
 		return 0, err
 	}
-	if env == nil || env.Obj == nil {
-		return 0, nil
-	}
-	var result struct {
-		ConfigVersion int `json:"config_version"`
-	}
-	if err := json.Unmarshal(env.Obj, &result); err != nil {
-		return 0, nil
-	}
+	result, _ := decodeObj[configVersionResult](env)
 	return result.ConfigVersion, nil
 }
 
@@ -498,15 +509,7 @@ func (r *Remote) GetRemoteConfigVersion(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if env == nil || env.Obj == nil {
-		return 0, nil
-	}
-	var result struct {
-		ConfigVersion int `json:"config_version"`
-	}
-	if err := json.Unmarshal(env.Obj, &result); err != nil {
-		return 0, nil
-	}
+	result, _ := decodeObj[configVersionResult](env)
 	return result.ConfigVersion, nil
 }
 
@@ -533,13 +536,13 @@ func (r *Remote) ReinstallBundle(ctx context.Context, bundlePath string) error {
 }
 
 func (r *Remote) ApplyNodeConfig(ctx context.Context, xrayConfig json.RawMessage) error {
-	_, err := r.do(ctx, http.MethodPost, "api/v1/config/apply",
+	_, err := r.doWithRetry(ctx, http.MethodPost, "api/v1/config/apply",
 		map[string]any{"xray_config": xrayConfig})
 	return err
 }
 
 func (r *Remote) InstallXray(ctx context.Context, version string) error {
-	_, err := r.do(ctx, http.MethodPost, "api/v1/xray/install",
+	_, err := r.doWithRetry(ctx, http.MethodPost, "api/v1/xray/install",
 		map[string]string{"version": version})
 	return err
 }
@@ -549,12 +552,13 @@ func (r *Remote) GetXrayStatus(ctx context.Context) (running bool, version strin
 	if err != nil {
 		return false, "", err
 	}
-	var result struct {
+	type xrayStatus struct {
 		Running bool   `json:"running"`
 		Version string `json:"version"`
 	}
-	if err := json.Unmarshal(env.Obj, &result); err != nil {
-		return false, "", fmt.Errorf("decode xray status: %w", err)
+	result, err := decodeObj[xrayStatus](env)
+	if err != nil {
+		return false, "", err
 	}
 	return result.Running, result.Version, nil
 }
@@ -612,9 +616,9 @@ func (r *Remote) GetWebCertFiles(ctx context.Context) (*WebCertFiles, error) {
 	if err != nil {
 		return nil, err
 	}
-	var files WebCertFiles
-	if err := json.Unmarshal(env.Obj, &files); err != nil {
-		return nil, fmt.Errorf("decode web cert files: %w", err)
+	files, err := decodeObj[WebCertFiles](env)
+	if err != nil {
+		return nil, err
 	}
 	return &files, nil
 }
@@ -643,22 +647,26 @@ func (r *Remote) FetchTrafficSnapshot(ctx context.Context) (*TrafficSnapshot, er
 	if err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(envList.Obj, &snap.Inbounds); err != nil {
+	inbounds, err := decodeObj[[]*model.Inbound](envList)
+	if err != nil {
 		return nil, fmt.Errorf("decode inbound list: %w", err)
 	}
+	snap.Inbounds = inbounds
 
 	envOnlines, err := r.doWithRetry(ctx, http.MethodPost, "api/v1/clients/onlines", nil)
 	if err != nil {
 		logger.Warning("remote", r.node.Name, "onlines fetch failed:", err)
-	} else if len(envOnlines.Obj) > 0 {
-		_ = json.Unmarshal(envOnlines.Obj, &snap.OnlineEmails)
+	} else {
+		onlines, _ := decodeObj[[]string](envOnlines)
+		snap.OnlineEmails = onlines
 	}
 
 	envLastOnline, err := r.doWithRetry(ctx, http.MethodPost, "api/v1/clients/lastOnline", nil)
 	if err != nil {
 		logger.Warning("remote", r.node.Name, "lastOnline fetch failed:", err)
-	} else if len(envLastOnline.Obj) > 0 {
-		_ = json.Unmarshal(envLastOnline.Obj, &snap.LastOnlineMap)
+	} else {
+		lastOnline, _ := decodeObj[map[string]int64](envLastOnline)
+		snap.LastOnlineMap = lastOnline
 	}
 
 	return snap, nil
@@ -677,7 +685,7 @@ type CertStatus struct {
 // PushCert sends a TLS certificate and key PEM to the node and asks it to
 // install them as its TLS serving certificate.
 func (r *Remote) PushCert(ctx context.Context, certPEM, keyPEM string) error {
-	_, err := r.do(ctx, http.MethodPost, "api/v1/certs",
+	_, err := r.doWithRetry(ctx, http.MethodPost, "api/v1/certs",
 		map[string]string{"certPEM": certPEM, "keyPEM": keyPEM})
 	return err
 }
@@ -689,12 +697,9 @@ func (r *Remote) GetCertStatus(ctx context.Context) (*CertStatus, error) {
 	if err != nil {
 		return nil, err
 	}
-	if env == nil || env.Obj == nil {
-		return &CertStatus{}, nil
-	}
-	var st CertStatus
-	if err := json.Unmarshal(env.Obj, &st); err != nil {
-		return nil, fmt.Errorf("decode cert status: %w", err)
+	st, err := decodeObj[CertStatus](env)
+	if err != nil {
+		return nil, err
 	}
 	return &st, nil
 }

@@ -479,8 +479,11 @@ LUI_MAIN_FOLDER=/usr/local/l-ui-agent
 LUI_SERVICE=/etc/systemd/system
 LUI_BOOTSTRAP_API_TOKEN=%s
 LUI_WEB_PORT=%d
-EOF`, node.ApiToken, req.AgentPort)
-	envCmd += "\nchmod 600 /etc/default/l-ui-agent\n"
+EOF
+# Write fallback env file for backward compatibility with old service units
+cp /etc/default/l-ui-agent /etc/default/l-ui 2>/dev/null || true
+`, node.ApiToken, req.AgentPort)
+	envCmd += "chmod 600 /etc/default/l-ui-agent /etc/default/l-ui 2>/dev/null || chmod 600 /etc/default/l-ui-agent\n"
 	out, err = sshutil.RunSSHCommand(conn, req.SSHPassword, useSudo, envCmd)
 	if err != nil {
 		addStep("write-env", false, out+"\n"+err.Error())
