@@ -92,7 +92,7 @@ SIZE=$(curl -sfL -r 0-0 -D - -o /dev/null "$URL" 2>/dev/null | grep -i content-r
 printf "\n"
 tar -xzf "${TMPDIR}/${TARBALL}" -C "$TMPDIR"
 
-BINARY="${TMPDIR}/l-ui/l-ui"
+BINARY="${TMPDIR}/l-ui-hub/l-ui"
 if [[ ! -x "$BINARY" ]]; then
     echo "binary not found in tarball"
     exit 1
