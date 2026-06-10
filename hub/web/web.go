@@ -5,7 +5,9 @@ import (
 	"crypto/tls"
 	"embed"
 	"io/fs"
+	"mime"
 	"net"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -121,7 +123,7 @@ func (s *Server) isDirectHTTPSConfigured() bool {
 
 func (s *Server) initRouter() (*fiber.App, error) {
 	app := fiber.New(fiber.Config{
-		AppName:      "l-ui",
+		AppName: "l-ui",
 		ErrorHandler: func(c fiber.Ctx, err error) error {
 			c.Status(fiber.StatusNotFound)
 			return nil
@@ -216,6 +218,9 @@ func (s *Server) initRouter() (*fiber.App, error) {
 			data, err := distFS.ReadFile("dist/assets/" + path)
 			if err != nil {
 				return c.SendStatus(fiber.StatusNotFound)
+			}
+			if ct := mime.TypeByExtension(filepath.Ext(path)); ct != "" {
+				c.Set("Content-Type", ct)
 			}
 			c.Set("Cache-Control", "max-age=31536000")
 			return c.Send(data)

@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/drunkleen/l-ui/internal/config"
-	"github.com/drunkleen/l-ui/internal/logger"
 	"github.com/drunkleen/l-ui/hub/web/global"
 	"github.com/drunkleen/l-ui/hub/web/session"
+	"github.com/drunkleen/l-ui/internal/config"
+	"github.com/drunkleen/l-ui/internal/logger"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -28,6 +28,7 @@ func ServeOpenAPISpec(c fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"success": false, "msg": "openapi.json not found"})
 	}
+	c.Set("Content-Type", "application/json")
 	c.Set("Cache-Control", "public, max-age=300")
 	return c.Status(fiber.StatusOK).Send(body)
 }
@@ -97,5 +98,6 @@ func serveDistPage(c fiber.Ctx, name string) error {
 	c.Set("Pragma", "no-cache")
 	c.Set("Expires", "0")
 	c.Set("Last-Modified", distPageBuildTime.UTC().Format("Mon, 02 Jan 2006 15:04:05 GMT"))
+	c.Set("Content-Type", "text/html; charset=utf-8")
 	return c.Status(fiber.StatusOK).Send(out)
 }
