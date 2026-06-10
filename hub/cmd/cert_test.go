@@ -120,8 +120,7 @@ func TestSslIssueIPFlags(t *testing.T) {
 	if len(capturedArgs) != 1 {
 		t.Fatalf("expected 1 exec call, got %d", len(capturedArgs))
 	}
-	// Should be: --issue --standalone -d 1.2.3.4 --ip 1.2.3.4
-	expected := []string{"--issue", "--standalone", "-d", "1.2.3.4", "--ip", "1.2.3.4", "--server", "letsencrypt", "--keylength", "2048"}
+	expected := []string{"--issue", "--standalone", "-d", "1.2.3.4", "--server", "letsencrypt", "--keylength", "2048"}
 	for i, exp := range expected {
 		if capturedArgs[0][i+1] != exp {
 			t.Errorf("arg[%d] = %q, want %q", i+1, capturedArgs[0][i+1], exp)

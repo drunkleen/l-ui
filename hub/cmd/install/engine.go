@@ -307,7 +307,7 @@ func (e *Engine) issueCert(domain, ip string) (string, error) {
 		args = []string{"--issue", "--standalone", "-d", domain, "--server", "letsencrypt", "--keylength", "2048"}
 		certDir = filepath.Join(home, ".acme.sh", domain)
 	} else if ip != "" {
-		args = []string{"--issue", "--standalone", "-d", ip, "--ip", ip, "--server", "letsencrypt", "--keylength", "2048"}
+		args = []string{"--issue", "--standalone", "-d", ip, "--server", "letsencrypt", "--keylength", "2048"}
 		certDir = filepath.Join(home, ".acme.sh", ip)
 	} else {
 		return "", fmt.Errorf("either domain or IP required for SSL")

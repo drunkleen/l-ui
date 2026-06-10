@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"embed"
 	"io/fs"
-	"mime"
 	"net"
 	"path/filepath"
 	"strconv"
@@ -219,7 +218,7 @@ func (s *Server) initRouter() (*fiber.App, error) {
 			if err != nil {
 				return c.SendStatus(fiber.StatusNotFound)
 			}
-			if ct := mime.TypeByExtension(filepath.Ext(path)); ct != "" {
+			if ct := assetContentType(filepath.Ext(path)); ct != "" {
 				c.Set("Content-Type", ct)
 			}
 			c.Set("Cache-Control", "max-age=31536000")
@@ -447,4 +446,27 @@ func (s *Server) GetCron() *cron.Cron {
 
 func (s *Server) GetWSHub() any {
 	return s.wsHub
+}
+
+var assetContentTypes = map[string]string{
+	".js":    "application/javascript",
+	".css":   "text/css",
+	".svg":   "image/svg+xml",
+	".json":  "application/json",
+	".html":  "text/html; charset=utf-8",
+	".png":   "image/png",
+	".ico":   "image/x-icon",
+	".webp":  "image/webp",
+	".woff":  "font/woff",
+	".woff2": "font/woff2",
+	".ttf":   "font/ttf",
+	".txt":   "text/plain; charset=utf-8",
+	".map":   "application/json",
+}
+
+func assetContentType(ext string) string {
+	if ct, ok := assetContentTypes[ext]; ok {
+		return ct
+	}
+	return ""
 }

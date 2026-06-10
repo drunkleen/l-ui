@@ -134,7 +134,7 @@ func runSslIssueIP(cmd *cobra.Command, args []string) {
 	stopPanelService()
 
 	// acme.sh supports IP certificates via the --ip flag
-	out, err := execCommand(acmeShPath, "--issue", "--standalone", "-d", sslIP, "--ip", sslIP, "--server", "letsencrypt", "--keylength", "2048").CombinedOutput()
+	out, err := execCommand(acmeShPath, "--issue", "--standalone", "-d", sslIP, "--server", "letsencrypt", "--keylength", "2048").CombinedOutput()
 	if err != nil {
 		fmt.Println(sslRedStyle.Render("✖  Failed to issue IP certificate:"))
 		fmt.Println(string(out))
