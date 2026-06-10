@@ -884,11 +884,13 @@ export default function InboundFormModal({
         onOk={submit}
         onCancel={onClose}
         destroyOnHidden
+        styles={{ body: { padding: '16px 20px' } }}
       >
         <Form
+          className="inbound-form"
           form={form}
           colon={false}
-          labelCol={{ sm: { span: 8 } }}
+          labelCol={{ sm: { span: 7 } }}
           wrapperCol={{ sm: { span: 14 } }}
           onValuesChange={onValuesChange}
         >

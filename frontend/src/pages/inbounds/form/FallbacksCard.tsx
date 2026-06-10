@@ -26,20 +26,20 @@ export default function FallbacksCard({
 }: FallbacksCardProps) {
   const { t } = useTranslation();
   return (
-    <Card size="small" className="mt-12" title={t('pages.inbounds.fallbacks.title') || 'Fallbacks'}>
+    <Card size="small" className="mt-8" title={t('pages.inbounds.fallbacks.title') || 'Fallbacks'}>
       {fallbacks.length === 0 && (
         <Empty
           description={t('pages.inbounds.fallbacks.empty') || 'No fallbacks yet'}
           styles={{ image: { height: 40 } }}
-          style={{ margin: '8px 0 12px' }}
+          style={{ margin: '4px 0 8px' }}
         />
       )}
       {fallbacks.map((record, idx) => (
         <div
           key={record.rowKey}
-          style={{ border: '1px solid var(--app-border-tertiary)', borderRadius: 6, padding: '10px 12px', marginBottom: 8 }}
+          style={{ border: '1px solid var(--app-border-tertiary)', borderRadius: 6, padding: '8px 10px', marginBottom: 6 }}
         >
-          <Space.Compact block style={{ marginBottom: 6 }}>
+          <Space.Compact block style={{ marginBottom: 4 }}>
             <Select
               value={record.childId}
               options={fallbackChildOptions}

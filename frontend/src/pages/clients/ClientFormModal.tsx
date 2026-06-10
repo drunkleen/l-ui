@@ -24,6 +24,7 @@ import { DateTimePicker } from '@/components/form';
 import { TLS_FLOW_CONTROL } from '@/schemas/primitives';
 import type { ClientRecord, InboundOption } from '@/hooks/useClients';
 import { ClientFormSchema, ClientCreateFormSchema } from '@/schemas/client';
+import './ClientFormModal.css';
 
 const FLOW_OPTIONS = Object.values(TLS_FLOW_CONTROL);
 const VMESS_SECURITY_OPTIONS = ['auto', 'aes-128-gcm', 'chacha20-poly1305', 'none', 'zero'] as const;
@@ -391,12 +392,12 @@ export default function ClientFormModal({
         okButtonProps={{ loading: submitting }}
         width={720}
         style={{ top: 20 }}
-        styles={{ body: { maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', overflowX: 'hidden' } }}
+        styles={{ body: { padding: '16px 20px', maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', overflowX: 'hidden' } }}
         onOk={onSubmit}
         onCancel={close}
       >
-        <Form layout="vertical">
-          <Row gutter={16}>
+        <Form className="client-form" layout="vertical">
+          <Row gutter={10}>
             <Col xs={24} md={12}>
               <Form.Item label={t('pages.clients.email')} required>
                 <Space.Compact style={{ display: 'flex' }}>
@@ -420,7 +421,7 @@ export default function ClientFormModal({
             </Col>
           </Row>
 
-          <Row gutter={16}>
+          <Row gutter={10}>
             <Col xs={24} md={12}>
               <Form.Item label={t('pages.clients.hysteriaAuth')}>
                 <Space.Compact style={{ display: 'flex' }}>
@@ -439,7 +440,7 @@ export default function ClientFormModal({
             </Col>
           </Row>
 
-          <Row gutter={16}>
+          <Row gutter={10}>
             <Col xs={24} md={12}>
               <Form.Item label={t('pages.clients.uuid')}>
                 <Space.Compact style={{ display: 'flex' }}>
@@ -464,7 +465,7 @@ export default function ClientFormModal({
             )}
           </Row>
 
-          <Row gutter={16}>
+          <Row gutter={10}>
             <Col xs={24} md={12}>
               {form.delayedStart ? (
                 <Form.Item label={t('pages.clients.expireDays')}>
@@ -494,7 +495,7 @@ export default function ClientFormModal({
             </Col>
           </Row>
 
-          <Row gutter={16}>
+          <Row gutter={10}>
             <Col xs={24} md={12}>
               <Form.Item
                 label={t('pages.clients.renew')}
@@ -539,7 +540,7 @@ export default function ClientFormModal({
             )}
           </Row>
 
-          <Row gutter={16}>
+          <Row gutter={10}>
             {tgBotEnable && (
               <Col xs={24} md={12}>
                 <Form.Item label={t('pages.clients.telegramId')}>

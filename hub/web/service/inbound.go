@@ -1665,17 +1665,17 @@ func (s *InboundService) setRemoteTrafficLocked(nodeID int, snap *runtime.Traffi
 				structuralChange = true
 			}
 
-			if err := tx.Exec(
-				fmt.Sprintf(
-					`UPDATE client_traffics
-					 SET up = up + ?, down = down + ?, enable = ?, total = ?, expiry_time = ?, reset = ?,
-					     last_online = %s
-					 WHERE email = ?`,
-					database.GreatestExpr("last_online", "?"),
-				),
-				deltaUp, deltaDown, cs.Enable, cs.Total, cs.ExpiryTime, cs.Reset,
-				cs.LastOnline, cs.Email,
-			).Error; err != nil {
+			if err := tx.Model(&xray.ClientTraffic{}).
+				Where("email = ?", cs.Email).
+				Updates(map[string]any{
+					"up":          gorm.Expr("up + ?", deltaUp),
+					"down":        gorm.Expr("down + ?", deltaDown),
+					"enable":      cs.Enable,
+					"total":       cs.Total,
+					"expiry_time": cs.ExpiryTime,
+					"reset":       cs.Reset,
+					"last_online": gorm.Expr(database.GreatestExpr("last_online", "?"), cs.LastOnline),
+				}).Error; err != nil {
 				return false, err
 			}
 			if err := s.upsertNodeBaseline(tx, nodeID, cs.Email, cs.Up, cs.Down); err != nil {
@@ -2270,14 +2270,12 @@ func (s *InboundService) disableInvalidClients(tx *gorm.DB) (bool, int64, error)
 	}
 	var targets []target
 	if len(depletedEmails) > 0 {
-		err = tx.Raw(`
-			SELECT inbounds.id AS inbound_id, inbounds.node_id AS node_id,
-			       inbounds.tag AS tag, clients.email AS email
-			FROM clients
-			JOIN client_inbounds ON client_inbounds.client_id = clients.id
-			JOIN inbounds        ON inbounds.id = client_inbounds.inbound_id
-			WHERE clients.email IN ?
-		`, depletedEmails).Scan(&targets).Error
+		err = tx.Model(&model.ClientRecord{}).
+			Select("inbounds.id AS inbound_id, inbounds.node_id AS node_id, inbounds.tag AS tag, clients.email AS email").
+			Joins("JOIN client_inbounds ON client_inbounds.client_id = clients.id").
+			Joins("JOIN inbounds ON inbounds.id = client_inbounds.inbound_id").
+			Where("clients.email IN ?", depletedEmails).
+			Scan(&targets).Error
 		if err != nil {
 			return false, 0, err
 		}
@@ -3405,9 +3403,10 @@ func (s *InboundService) MigrationRequirements() {
 		tx.Model(model.Inbound{}).Where("id = ?", ep.Id).Update("stream_settings", newStream)
 	}
 
-	err = tx.Raw(`UPDATE inbounds
-	SET tag = REPLACE(tag, '0.0.0.0:', '')
-	WHERE INSTR(tag, '0.0.0.0:') > 0;`).Error
+	err = tx.Model(&model.Inbound{}).
+		Where("INSTR(tag, '0.0.0.0:') > 0").
+		UpdateColumn("tag", gorm.Expr("REPLACE(tag, '0.0.0.0:', '')")).
+		Error
 	if err != nil {
 		return
 	}

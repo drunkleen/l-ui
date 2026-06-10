@@ -239,13 +239,12 @@ func (s *NodeService) GetAll() ([]*model.Node, error) {
 		Count  int `gorm:"column:count"`
 	}
 	var clientCounts []clientCountRow
-	if err := db.Raw(`
-		SELECT inbounds.node_id AS node_id, COUNT(DISTINCT client_inbounds.client_id) AS count
-		FROM inbounds
-		JOIN client_inbounds ON client_inbounds.inbound_id = inbounds.id
-		WHERE inbounds.node_id IS NOT NULL
-		GROUP BY inbounds.node_id
-	`).Scan(&clientCounts).Error; err == nil {
+	if err := db.Model(&model.Inbound{}).
+		Select("inbounds.node_id AS node_id, COUNT(DISTINCT client_inbounds.client_id) AS count").
+		Joins("JOIN client_inbounds ON client_inbounds.inbound_id = inbounds.id").
+		Where("inbounds.node_id IS NOT NULL").
+		Group("inbounds.node_id").
+		Scan(&clientCounts).Error; err == nil {
 		for _, row := range clientCounts {
 			for _, n := range nodes {
 				if n.Id == row.NodeID {

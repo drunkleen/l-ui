@@ -7,21 +7,37 @@
   margin-top: 4px;
 }
 
+.inbound-form .ant-form-item {
+  margin-bottom: 14px;
+}
+
+.inbound-form .ant-form-item:last-child {
+  margin-bottom: 0;
+}
+
+.inbound-form .ant-tabs {
+  margin-top: -8px;
+}
+
+.inbound-form .ant-tabs-nav {
+  margin-bottom: 12px;
+}
+
 .advanced-shell {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .advanced-panel {
-  padding: 14px;
+  padding: 12px;
   border: 1px solid var(--ant-color-border-secondary);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--ant-color-fill-quaternary);
 }
 
 .advanced-panel__header {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .advanced-panel__title {
@@ -31,32 +47,34 @@
 }
 
 .advanced-panel__subtitle {
-  margin-top: 4px;
+  margin-top: 2px;
   opacity: 0.7;
   line-height: 1.5;
+  font-size: 13px;
 }
 
 .advanced-inner-tabs .ant-tabs-nav {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .advanced-inner-tabs .ant-tabs-tab {
-  padding-inline: 14px;
+  padding-inline: 12px;
 }
 
 .advanced-editor-meta {
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   opacity: 0.75;
   line-height: 1.5;
+  font-size: 13px;
 }
 
 @media (max-width: 768px) {
   .advanced-panel {
-    padding: 12px;
-    border-radius: 10px;
+    padding: 10px;
+    border-radius: 8px;
   }
 
   .advanced-inner-tabs .ant-tabs-tab {
-    padding-inline: 10px;
+    padding-inline: 8px;
   }
 }

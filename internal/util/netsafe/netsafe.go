@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -42,6 +43,9 @@ func SSRFGuardedDialContext(ctx context.Context, network, addr string) (net.Conn
 			return nil, err
 		}
 	}
+	sort.SliceStable(ips, func(i, j int) bool {
+		return ips[i].IP.To4() != nil && ips[j].IP.To4() == nil
+	})
 	var lastErr error
 	for _, ipAddr := range ips {
 		if !allowPrivate && IsBlockedIP(ipAddr.IP) {
